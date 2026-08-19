@@ -65,15 +65,15 @@ GEOS: dict[str, Geo] = {
         flag="🇱🇻",
         channels=[
             Channel(
-                chat_id=_int_env("CH_LV_CASINO", -1000000000001),
-                title=os.getenv("CH_LV_CASINO_TITLE", "Casino LV"),
-                url=os.getenv("CH_LV_CASINO_URL", "https://t.me/your_casino_lv"),
+                chat_id=_int_env("CH_LV_CASINO", -1003910322335),
+                title=os.getenv("CH_LV_CASINO_TITLE", "LUCKY LATVIA"),
+                url=os.getenv("CH_LV_CASINO_URL", "https://t.me/luckylatviaan"),
                 vertical="casino",
             ),
             Channel(
-                chat_id=_int_env("CH_LV_BETTING", -1000000000002),
-                title=os.getenv("CH_LV_BETTING_TITLE", "Betting LV"),
-                url=os.getenv("CH_LV_BETTING_URL", "https://t.me/your_betting_lv"),
+                chat_id=_int_env("CH_LV_BETTING", -1003713143280),
+                title=os.getenv("CH_LV_BETTING_TITLE", "LV PICKS"),
+                url=os.getenv("CH_LV_BETTING_URL", "https://t.me/latviapicks"),
                 vertical="betting",
             ),
         ],
@@ -84,43 +84,33 @@ GEOS: dict[str, Geo] = {
         flag="🇱🇹",
         channels=[
             Channel(
-                chat_id=_int_env("CH_LT_CASINO", -1000000000003),
-                title=os.getenv("CH_LT_CASINO_TITLE", "Casino LT"),
-                url=os.getenv("CH_LT_CASINO_URL", "https://t.me/your_casino_lt"),
+                chat_id=_int_env("CH_LT_CASINO", -1003237183860),
+                title=os.getenv("CH_LT_CASINO_TITLE", "LUCKY GURU"),
+                url=os.getenv("CH_LT_CASINO_URL", "https://t.me/luckycasinoguru"),
                 vertical="casino",
             ),
-            Channel(
-                chat_id=_int_env("CH_LT_BETTING", -1000000000004),
-                title=os.getenv("CH_LT_BETTING_TITLE", "Betting LT"),
-                url=os.getenv("CH_LT_BETTING_URL", "https://t.me/your_betting_lt"),
-                vertical="betting",
-            ),
+            # Второго канала под LT пока нет. Когда появится беттинг-канал —
+            # раскомментировать и добавить переменные CH_LT_BETTING*.
+            # Channel(
+            #     chat_id=_int_env("CH_LT_BETTING", 0),
+            #     title=os.getenv("CH_LT_BETTING_TITLE", "Betting LT"),
+            #     url=os.getenv("CH_LT_BETTING_URL", ""),
+            #     vertical="betting",
+            # ),
         ],
     ),
 }
 
 # ---------------------------------------------------------------------------
-# Тексты. Правятся здесь, без залезания в хендлеры.
+# Тексты пользователя вынесены в locales.py (lv / lt / en).
+# Здесь остаются только настройки медиа.
 # ---------------------------------------------------------------------------
-TXT_GATE = (
-    "🎁 <b>Все актуальные бонусы букмекеров и казино — в одном боте.</b>\n\n"
-    "Фриспины, бездепы, промокоды и повышенные первые депозиты. "
-    "Список обновляется каждую неделю.\n\n"
-    "Чтобы открыть доступ — подпишись на оба канала ниже "
-    "и нажми «Я подписался»."
-)
-
-TXT_NOT_SUBSCRIBED = "❌ Подписка не найдена. Подпишись на оба канала и нажми кнопку снова."
-
-TXT_WELCOME = (
-    "✅ <b>Доступ открыт!</b>\n\n"
-    "Выбирай раздел — внутри актуальные бонусы с прямыми ссылками.\n\n"
-    "Новые бонусы буду присылать сюда, как только появятся."
-)
-
-TXT_HUB = "🎁 <b>Бонусы</b>\n\nВыбери категорию:"
-
-TXT_GEO_PICK = "🌍 Выбери свою страну:"
+# Папка с картинками для гейта. Ожидаемые имена файлов:
+#   image/gate_lv.jpg   — для Латвии
+#   image/gate_lt.jpg   — для Литвы
+#   image/gate.jpg      — общий фолбэк
+# Поддерживаются .jpg .jpeg .png .webp. Если файла нет — уйдёт просто текст.
+IMAGES_DIR = os.getenv("IMAGES_DIR", "image")
 
 
 def get_geo(code: str | None) -> Geo | None:
