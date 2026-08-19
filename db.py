@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     first_name   TEXT,
     lang         TEXT,
     geo          TEXT,               -- lv / lt
+    vertical     TEXT,               -- casino / betting / NULL (не определена)
     source       TEXT,               -- метка кампании из deep-link
     gate_passed  INTEGER DEFAULT 0,
     status       TEXT DEFAULT 'active',   -- active / blocked
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_geo    ON users(geo);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 CREATE INDEX IF NOT EXISTS idx_users_source ON users(source);
+-- индекс по vertical создаётся в _migrate: на старых базах колонки ещё нет
 
 -- Клики по бонусам: главный сигнал качества трафика
 CREATE TABLE IF NOT EXISTS bonus_clicks (
@@ -45,6 +47,26 @@ CREATE TABLE IF NOT EXISTS broadcasts (
     started_at  TEXT,
     finished_at TEXT
 );
+
+-- Связка «сообщение в чате админа» → «юзер», чтобы ответ reply'ем
+-- уходил нужному человеку
+CREATE TABLE IF NOT EXISTS relay (
+    admin_chat_id INTEGER,
+    admin_msg_id  INTEGER,
+    user_id       INTEGER,
+    created_at    TEXT,
+    PRIMARY KEY (admin_chat_id, admin_msg_id)
+);
+
+-- Лог переписки: что писал юзер и что отвечали ему
+CREATE TABLE IF NOT EXISTS inbox (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER,
+    direction  TEXT,      -- in / out
+    text       TEXT,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_user ON inbox(user_id);
 """
 
 
@@ -56,6 +78,40 @@ async def init() -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(SCHEMA)
         await db.commit()
+        await _migrate(db)
+
+
+async def _migrate(db) -> None:
+    """Догоняет схему на уже работающей базе, не теряя данные."""
+    cur = await db.execute("PRAGMA table_info(users)")
+    cols = {r[1] for r in await cur.fetchall()}
+
+    if "vertical" not in cols:
+        await db.execute("ALTER TABLE users ADD COLUMN vertical TEXT")
+        await db.commit()
+
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_users_vertical ON users(vertical)"
+    )
+    await db.commit()
+
+    # Заполняем вертикаль тем, у кого её ещё нет, разбирая метку источника
+    from config import parse_vertical
+
+    cur = await db.execute(
+        "SELECT user_id, source FROM users WHERE vertical IS NULL AND source IS NOT NULL"
+    )
+    rows = await cur.fetchall()
+    updated = 0
+    for uid, source in rows:
+        v = parse_vertical(source)
+        if v:
+            await db.execute(
+                "UPDATE users SET vertical = ? WHERE user_id = ?", (v, uid)
+            )
+            updated += 1
+    if updated:
+        await db.commit()
 
 
 async def upsert_user(
@@ -65,6 +121,7 @@ async def upsert_user(
     lang: str | None,
     geo: str | None,
     source: str | None,
+    vertical: str | None = None,
 ) -> None:
     """Первый /start создаёт запись. Повторный — обновляет last_seen.
 
@@ -77,18 +134,20 @@ async def upsert_user(
             await db.execute(
                 """UPDATE users
                    SET username = ?, first_name = ?, last_seen = ?, status = 'active',
-                       geo    = COALESCE(NULLIF(geo, ''), ?),
-                       source = COALESCE(NULLIF(source, ''), ?)
+                       geo      = COALESCE(NULLIF(geo, ''), ?),
+                       source   = COALESCE(NULLIF(source, ''), ?),
+                       vertical = COALESCE(NULLIF(vertical, ''), ?)
                    WHERE user_id = ?""",
-                (username, first_name, now(), geo, source, user_id),
+                (username, first_name, now(), geo, source, vertical, user_id),
             )
         else:
             await db.execute(
                 """INSERT INTO users
-                   (user_id, username, first_name, lang, geo, source,
+                   (user_id, username, first_name, lang, geo, vertical, source,
                     created_at, last_seen)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (user_id, username, first_name, lang, geo, source, now(), now()),
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (user_id, username, first_name, lang, geo, vertical, source,
+                 now(), now()),
             )
         await db.commit()
 
@@ -138,25 +197,88 @@ async def log_click(
         await db.commit()
 
 
+def _build_filter(f: dict) -> tuple[str, list]:
+    """Собирает WHERE под фильтры конструктора аудитории."""
+    q = " WHERE status = 'active'"
+    params: list = []
+
+    if f.get("gate") == "passed":
+        q += " AND gate_passed = 1"
+    elif f.get("gate") == "not_passed":
+        q += " AND gate_passed = 0"
+
+    geos = f.get("geos") or []
+    if geos:
+        q += f" AND geo IN ({','.join('?' * len(geos))})"
+        params += list(geos)
+
+    verts = list(f.get("verticals") or [])
+    if verts:
+        parts = []
+        named = [v for v in verts if v != "none"]
+        if named:
+            parts.append(f"vertical IN ({','.join('?' * len(named))})")
+            params += named
+        if "none" in verts:
+            parts.append("vertical IS NULL")
+        q += " AND (" + " OR ".join(parts) + ")"
+
+    days = f.get("days") or 0
+    if days:
+        q += f" AND last_seen >= datetime('now', '-{int(days)} day')"
+
+    if f.get("source"):
+        q += " AND source LIKE ?"
+        params.append(f"%{f['source']}%")
+
+    return q, params
+
+
 async def get_audience(
     geo: str | None = None,
     source: str | None = None,
     only_passed: bool = True,
+    filters: dict | None = None,
 ) -> list[int]:
-    """Список user_id для рассылки."""
-    q = "SELECT user_id FROM users WHERE status = 'active'"
-    params: list = []
-    if only_passed:
-        q += " AND gate_passed = 1"
-    if geo:
-        q += " AND geo = ?"
-        params.append(geo)
-    if source:
-        q += " AND source LIKE ?"
-        params.append(f"{source}%")
+    """
+    Список user_id для рассылки.
+
+    Либо простой вызов (geo/source/only_passed), либо filters —
+    словарь из конструктора аудитории.
+    """
+    if filters is None:
+        filters = {
+            "geos": [geo] if geo else [],
+            "gate": "passed" if only_passed else "any",
+            "source": source,
+        }
+    where, params = _build_filter(filters)
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(q, params)
+        cur = await db.execute("SELECT user_id FROM users" + where, params)
         return [r[0] for r in await cur.fetchall()]
+
+
+async def count_audience(filters: dict) -> int:
+    where, params = _build_filter(filters)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT COUNT(*) FROM users" + where, params)
+        return (await cur.fetchone())[0]
+
+
+async def breakdown() -> list[dict]:
+    """Матрица ГЕО × вертикаль — для быстрой оценки размеров сегментов."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """SELECT geo, vertical,
+                      COUNT(*) AS total,
+                      SUM(gate_passed = 1) AS passed,
+                      SUM(status = 'blocked') AS blocked
+               FROM users
+               GROUP BY geo, vertical
+               ORDER BY total DESC"""
+        )
+        return [dict(r) for r in await cur.fetchall()]
 
 
 async def stats() -> dict:
@@ -222,3 +344,95 @@ async def log_broadcast_finish(bid: int, sent: int, failed: int, blocked: int) -
             (sent, failed, blocked, now(), bid),
         )
         await db.commit()
+
+
+# --------------------------------------------------------------------------
+# Переписка с конкретным юзером
+# --------------------------------------------------------------------------
+async def touch(user_id: int) -> None:
+    """Обновляет время последней активности."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET last_seen = ? WHERE user_id = ?", (now(), user_id)
+        )
+        await db.commit()
+
+
+async def save_relay(admin_chat_id: int, admin_msg_id: int, user_id: int) -> None:
+    """Запоминает, какому юзеру принадлежит сообщение в чате админа."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO relay
+               (admin_chat_id, admin_msg_id, user_id, created_at) VALUES (?,?,?,?)""",
+            (admin_chat_id, admin_msg_id, user_id, now()),
+        )
+        await db.commit()
+
+
+async def get_relay(admin_chat_id: int, admin_msg_id: int) -> int | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT user_id FROM relay WHERE admin_chat_id = ? AND admin_msg_id = ?",
+            (admin_chat_id, admin_msg_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+
+async def log_message(user_id: int, direction: str, text: str | None) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO inbox (user_id, direction, text, created_at) VALUES (?,?,?,?)",
+            (user_id, direction, (text or "")[:2000], now()),
+        )
+        await db.commit()
+
+
+async def recent_users(limit: int = 20, only_wrote: bool = False) -> list[dict]:
+    """Последние юзеры. only_wrote=True — только те, кто реально что-то писал."""
+    if only_wrote:
+        q = """SELECT u.*, MAX(i.created_at) AS last_msg,
+                      SUM(i.direction = 'in') AS msgs_in
+               FROM users u JOIN inbox i ON i.user_id = u.user_id
+               WHERE i.direction = 'in'
+               GROUP BY u.user_id
+               ORDER BY last_msg DESC LIMIT ?"""
+    else:
+        q = """SELECT u.*, NULL AS last_msg, 0 AS msgs_in
+               FROM users u ORDER BY last_seen DESC LIMIT ?"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(q, (limit,))
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def find_users(query: str, limit: int = 20) -> list[dict]:
+    """Поиск по username, имени или ID."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if query.isdigit():
+            cur = await db.execute(
+                "SELECT * FROM users WHERE user_id = ?", (int(query),)
+            )
+        else:
+            pat = f"%{query.lstrip('@')}%"
+            cur = await db.execute(
+                """SELECT * FROM users
+                   WHERE username LIKE ? OR first_name LIKE ?
+                   ORDER BY last_seen DESC LIMIT ?""",
+                (pat, pat, limit),
+            )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_dialog(user_id: int, limit: int = 20) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """SELECT * FROM (
+                   SELECT * FROM inbox WHERE user_id = ?
+                   ORDER BY id DESC LIMIT ?
+               ) ORDER BY id ASC""",
+            (user_id, limit),
+        )
+        return [dict(r) for r in await cur.fetchall()]

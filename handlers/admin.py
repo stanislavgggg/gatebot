@@ -8,7 +8,8 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
     TelegramRetryAfter,
 )
-from aiogram.filters import Command
+from aiogram.dispatcher.event.bases import SkipHandler
+from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -18,8 +19,10 @@ from aiogram.types import (
     Message,
 )
 
+import audience
 import bonuses
 import db
+import relay
 from config import ADMIN_IDS, BROADCAST_SLEEP, GEOS
 
 router = Router()
@@ -41,15 +44,6 @@ def is_admin(user_id: int) -> bool:
 # --------------------------------------------------------------------------
 # Клавиатуры админки
 # --------------------------------------------------------------------------
-def audience_kb() -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=f"{g.flag} {g.title}", callback_data=f"bcgeo:{g.code}")]
-        for g in GEOS.values()
-    ]
-    rows.append([InlineKeyboardButton(text="📣 Всем", callback_data="bcgeo:all")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 def confirm_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -94,6 +88,14 @@ async def cmd_stats(message: Message):
         g = GEOS.get(r["geo"] or "")
         name = f"{g.flag} {g.title}" if g else (r["geo"] or "—")
         lines.append(f"{name}: {r['total']} / прошли {r['passed'] or 0}")
+
+    rows = await db.breakdown()
+    if rows:
+        lines += ["", "<b>ГЕО × вертикаль:</b>"]
+        for r in rows:
+            geo = (r["geo"] or "—").upper()
+            vert = r["vertical"] or "без вертикали"
+            lines.append(f"{geo} / {vert}: {r['total']} / прошли {r['passed'] or 0}")
 
     if s["by_source"]:
         lines += ["", "<b>По источникам:</b>"]
@@ -150,6 +152,139 @@ async def cmd_links(message: Message, bot: Bot):
     await message.answer("\n".join(lines))
 
 
+
+
+# --------------------------------------------------------------------------
+# Переписка с юзерами
+# --------------------------------------------------------------------------
+def fmt_user(u: dict) -> str:
+    uname = f"@{u['username']}" if u.get("username") else "—"
+    name = u.get("first_name") or "—"
+    geo = (u.get("geo") or "—").upper()
+    src = u.get("source") or "—"
+    mark = "✅" if u.get("gate_passed") else "⛔️"
+    if u.get("status") == "blocked":
+        mark = "🚫"
+    line = f"{mark} <b>{name}</b> {uname}\n    <code>{u['user_id']}</code> · {geo} · <code>{src}</code>"
+    if u.get("msgs_in"):
+        line += f" · 💬 {u['msgs_in']}"
+    return line
+
+
+@router.message(Command("inbox"))
+async def cmd_inbox(message: Message):
+    """Кто писал боту."""
+    if not is_admin(message.from_user.id):
+        return
+    users = await db.recent_users(20, only_wrote=True)
+    if not users:
+        await message.answer("Пока никто не писал.")
+        return
+    lines = ["<b>📨 Кто писал боту</b>", ""]
+    lines += [fmt_user(u) for u in users]
+    lines.append("")
+    lines.append("Ответить: <code>/msg ID текст</code> или reply на пересланное сообщение")
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("users"))
+async def cmd_users(message: Message, command: CommandObject):
+    """Последние юзеры бота."""
+    if not is_admin(message.from_user.id):
+        return
+    try:
+        limit = min(int((command.args or "20").strip()), 50)
+    except ValueError:
+        limit = 20
+    users = await db.recent_users(limit)
+    if not users:
+        await message.answer("База пуста.")
+        return
+    lines = [f"<b>👥 Последние {len(users)}</b>", ""]
+    lines += [fmt_user(u) for u in users]
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("find"))
+async def cmd_find(message: Message, command: CommandObject):
+    """Поиск юзера по username, имени или ID."""
+    if not is_admin(message.from_user.id):
+        return
+    q = (command.args or "").strip()
+    if not q:
+        await message.answer("Как пользоваться: <code>/find username</code> или <code>/find 12345</code>")
+        return
+    users = await db.find_users(q)
+    if not users:
+        await message.answer("Ничего не нашлось.")
+        return
+    lines = [f"<b>🔍 Найдено: {len(users)}</b>", ""]
+    lines += [fmt_user(u) for u in users]
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("dialog"))
+async def cmd_dialog(message: Message, command: CommandObject):
+    """История переписки с юзером."""
+    if not is_admin(message.from_user.id):
+        return
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        await message.answer("Как пользоваться: <code>/dialog 12345678</code>")
+        return
+    uid = int(arg)
+    rows = await db.get_dialog(uid, 30)
+    if not rows:
+        await message.answer("Переписки нет.")
+        return
+    lines = [f"<b>💬 Диалог с {uid}</b>", ""]
+    for r in rows:
+        arrow = "◀️" if r["direction"] == "in" else "▶️"
+        stamp = (r["created_at"] or "")[:16].replace("T", " ")
+        lines.append(f"{arrow} <i>{stamp}</i>\n{r['text'] or '[медиа]'}")
+    await message.answer("\n\n".join(lines[:1] + lines[1:])[:4000])
+
+
+@router.message(Command("msg"))
+async def cmd_msg(message: Message, command: CommandObject, bot: Bot):
+    """Написать юзеру напрямую: /msg 12345678 текст."""
+    if not is_admin(message.from_user.id):
+        return
+    args = (command.args or "").strip().split(maxsplit=1)
+    if len(args) < 2 or not args[0].isdigit():
+        await message.answer("Как пользоваться: <code>/msg 12345678 Привет!</code>")
+        return
+    uid, text = int(args[0]), args[1]
+    try:
+        await bot.send_message(uid, text)
+    except TelegramForbiddenError:
+        await db.mark_blocked(uid)
+        await message.answer("⛔️ Юзер заблокировал бота — помечен в базе")
+        return
+    except Exception as e:  # noqa: BLE001
+        await message.answer(f"❌ Не отправилось: {e}")
+        return
+    await db.log_message(uid, "out", text)
+    await message.answer("✅ Отправлено")
+
+
+@router.message(StateFilter(None), F.reply_to_message)
+async def reply_to_user(message: Message, bot: Bot):
+    """
+    Reply на пересланное сообщение → уходит юзеру.
+
+    StateFilter(None) — чтобы не перехватывать сообщения админа,
+    когда он в процессе создания рассылки.
+    """
+    if not is_admin(message.from_user.id):
+        raise SkipHandler
+    uid = await db.get_relay(message.chat.id, message.reply_to_message.message_id)
+    if not uid:
+        raise SkipHandler  # reply не на пересланное — пусть обработают дальше
+    ok, text = await relay.to_user(bot, message, uid)
+    await message.reply(text)
+
+
 # --------------------------------------------------------------------------
 # Рассылка
 # --------------------------------------------------------------------------
@@ -157,23 +292,69 @@ async def cmd_links(message: Message, bot: Bot):
 async def cmd_broadcast(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
+    filters = audience.default_filters()
     await state.set_state(Broadcast.choosing)
-    await message.answer("Кому шлём?", reply_markup=audience_kb())
+    await state.update_data(filters=filters, sampled=[])
+    text, kb = await audience.render(filters)
+    await message.answer(text, reply_markup=kb)
 
 
-@router.callback_query(Broadcast.choosing, F.data.startswith("bcgeo:"))
-async def bc_pick(call: CallbackQuery, state: FSMContext):
-    code = call.data.split(":", 1)[1]
-    geo = None if code == "all" else code
-    audience = await db.get_audience(geo)
-    await state.update_data(geo=geo, size=len(audience), sampled=[])
-    await state.set_state(Broadcast.waiting_message)
-    await call.message.edit_text(
-        f"Аудитория: <b>{len(audience)}</b> получателей.\n\n"
-        "Пришли сообщение для рассылки — текст, фото или видео. "
-        "Оно уйдёт подписчикам ровно в том виде, в каком ты его отправишь "
-        "(включая кнопки, если добавишь их через @BotFather-пост)."
-    )
+@router.message(Command("audience"))
+async def cmd_audience(message: Message):
+    """Матрица сегментов без запуска рассылки."""
+    if not is_admin(message.from_user.id):
+        return
+    rows = await db.breakdown()
+    if not rows:
+        await message.answer("База пуста.")
+        return
+    lines = ["<b>🎯 Сегменты</b>", "", "<code>ГЕО  вертикаль   всего  гейт</code>"]
+    for r in rows:
+        geo = (r["geo"] or "—").upper()
+        vert = r["vertical"] or "—"
+        lines.append(
+            f"<code>{geo:<4} {vert:<11} {r['total']:>5}  {r['passed'] or 0:>4}</code>"
+        )
+    await message.answer("\n".join(lines))
+
+
+@router.callback_query(Broadcast.choosing, F.data.startswith("aud:"))
+async def bc_filters(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    action = parts[1]
+    value = parts[2] if len(parts) > 2 else None
+    data = await state.get_data()
+    filters = data.get("filters") or audience.default_filters()
+
+    if action == "cancel":
+        await state.clear()
+        await call.message.edit_text("Отменено.")
+        await call.answer()
+        return
+
+    if action == "next":
+        size = await db.count_audience(filters)
+        if not size:
+            await call.answer("Под эти фильтры никто не подходит", show_alert=True)
+            return
+        await state.update_data(size=size)
+        await state.set_state(Broadcast.waiting_message)
+        await call.message.edit_text(
+            f"{audience.describe(filters)}\n\n"
+            f"📨 Получателей: <b>{size}</b>\n\n"
+            "Пришли сообщение — текст, фото или видео. "
+            "Оно уйдёт ровно в том виде, в каком ты его отправишь."
+        )
+        await call.answer()
+        return
+
+    filters = audience.apply_action(filters, action, value)
+    await state.update_data(filters=filters)
+    text, kb = await audience.render(filters)
+    try:
+        await call.message.edit_text(text, reply_markup=kb)
+    except Exception:  # noqa: BLE001
+        pass
     await call.answer()
 
 
@@ -215,7 +396,11 @@ async def bc_test(call: CallbackQuery, state: FSMContext, bot: Bot):
 async def bc_sample(call: CallbackQuery, state: FSMContext, bot: Bot):
     data = await state.get_data()
     already = set(data.get("sampled") or [])
-    users = [u for u in await db.get_audience(data.get("geo")) if u not in already]
+    users = [
+        u
+        for u in await db.get_audience(filters=data.get("filters"))
+        if u not in already
+    ]
     users = users[:SAMPLE_SIZE]
     if not users:
         await call.answer("Некому отправлять", show_alert=True)
@@ -267,7 +452,7 @@ async def bc_go(call: CallbackQuery, state: FSMContext, bot: Bot):
         run_broadcast(
             bot=bot,
             admin_id=call.from_user.id,
-            geo=data.get("geo"),
+            filters=data.get("filters"),
             from_chat_id=data["from_chat_id"],
             message_id=data["message_id"],
             report_to=call.message.chat.id,
@@ -279,7 +464,7 @@ async def bc_go(call: CallbackQuery, state: FSMContext, bot: Bot):
 async def run_broadcast(
     bot: Bot,
     admin_id: int,
-    geo: str | None,
+    filters: dict | None,
     from_chat_id: int,
     message_id: int,
     report_to: int,
@@ -287,8 +472,9 @@ async def run_broadcast(
 ):
     """Рассылка с троттлингом, ретраями и пометкой заблокировавших."""
     exclude = exclude or set()
-    users = [u for u in await db.get_audience(geo) if u not in exclude]
-    bid = await db.log_broadcast_start(admin_id, geo or "all")
+    users = [u for u in await db.get_audience(filters=filters) if u not in exclude]
+    label = audience.describe(filters or {}).replace("\n", " ") if filters else "all"
+    bid = await db.log_broadcast_start(admin_id, label[:200])
     sent = failed = blocked = 0
 
     for uid in users:
