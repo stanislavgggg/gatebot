@@ -14,6 +14,18 @@ LOCALES: dict[str, dict[str, str]] = {
             "pirmās iemaksas. Saraksts tiek atjaunināts katru nedēļu.\n\n"
             "Lai atvērtu piekļuvi — {n} un nospied «Esmu abonējis»."
         ),
+        "gate_casino": (
+            "🎰 <b>Labākie kazino bonusi Latvijā — vienā botā.</b>\n\n"
+            "Bezmaksas griezieni, bezdepozīta bonusi un palielinātas pirmās "
+            "iemaksas no pārbaudītiem kazino. Saraksts tiek atjaunināts katru nedēļu.\n\n"
+            "Lai atvērtu piekļuvi — {n} un nospied «Esmu abonējis»."
+        ),
+        "gate_betting": (
+            "⚽ <b>Labākie bukmeikeru piedāvājumi Latvijā — vienā botā.</b>\n\n"
+            "Bezmaksas likmes, palielinātas koeficienti un promo kodi no "
+            "pārbaudītiem bukmeikeriem. Plus ikdienas likmju ieteikumi.\n\n"
+            "Lai atvērtu piekļuvi — {n} un nospied «Esmu abonējis»."
+        ),
         "gate_one": "abonē kanālu zemāk",
         "gate_many": "abonē abus kanālus zemāk",
         "btn_check": "✅ Esmu abonējis",
@@ -46,6 +58,18 @@ LOCALES: dict[str, dict[str, str]] = {
             "pirmieji depozitai. Sąrašas atnaujinamas kas savaitę.\n\n"
             "Kad atvertum prieigą — {n} ir paspausk «Prenumeravau»."
         ),
+        "gate_casino": (
+            "🎰 <b>Geriausi kazino bonusai Lietuvoje — viename bote.</b>\n\n"
+            "Nemokami sukimai, bonusai be depozito ir padidinti pirmieji "
+            "depozitai iš patikrintų kazino. Sąrašas atnaujinamas kas savaitę.\n\n"
+            "Kad atvertum prieigą — {n} ir paspausk «Prenumeravau»."
+        ),
+        "gate_betting": (
+            "⚽ <b>Geriausi bukmekerių pasiūlymai Lietuvoje — viename bote.</b>\n\n"
+            "Nemokami statymai, padidinti koeficientai ir promo kodai iš "
+            "patikrintų bukmekerių. Plius kasdieniai statymų patarimai.\n\n"
+            "Kad atvertum prieigą — {n} ir paspausk «Prenumeravau»."
+        ),
         "gate_one": "prenumeruok kanalą žemiau",
         "gate_many": "prenumeruok abu kanalus žemiau",
         "btn_check": "✅ Prenumeravau",
@@ -76,6 +100,18 @@ LOCALES: dict[str, dict[str, str]] = {
             "🎁 <b>All current bookmaker and casino bonuses — in one bot.</b>\n\n"
             "Free spins, no-deposit bonuses, promo codes and boosted first "
             "deposits. The list is updated every week.\n\n"
+            "To unlock access — {n} and tap «I subscribed»."
+        ),
+        "gate_casino": (
+            "🎰 <b>The best casino bonuses — all in one bot.</b>\n\n"
+            "Free spins, no-deposit bonuses and boosted first deposits from "
+            "trusted casinos. The list is updated every week.\n\n"
+            "To unlock access — {n} and tap «I subscribed»."
+        ),
+        "gate_betting": (
+            "⚽ <b>The best bookmaker offers — all in one bot.</b>\n\n"
+            "Free bets, boosted odds and promo codes from trusted bookmakers. "
+            "Plus daily betting picks.\n\n"
             "To unlock access — {n} and tap «I subscribed»."
         ),
         "gate_one": "subscribe to the channel below",

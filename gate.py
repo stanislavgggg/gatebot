@@ -44,20 +44,29 @@ async def missing_channels(bot: Bot, geo: Geo, user_id: int) -> list:
 # --------------------------------------------------------------------------
 # Картинки
 # --------------------------------------------------------------------------
-def find_image(name: str, geo_code: str | None = None) -> FSInputFile | None:
+def find_image(
+    name: str, geo_code: str | None = None, vertical: str | None = None
+) -> FSInputFile | None:
     """
-    Ищет картинку по приоритету: {name}_{geo} → {name}.
-    Например gate_lv.jpg, затем gate.jpg. Нет файла — вернёт None,
-    и сообщение уйдёт просто текстом.
+    Ищет картинку по убыванию точности:
+      gate_{geo}_{vertical} → gate_{geo} → gate_{vertical} → gate
+    Например: gate_lv_casino.jpg → gate_lv.jpg → gate_casino.jpg → gate.jpg
+    Ни одного файла нет — вернёт None, сообщение уйдёт просто текстом.
     """
-    candidates = []
+    stems = []
+    if geo_code and vertical:
+        stems.append(f"{name}_{geo_code}_{vertical}")
     if geo_code:
-        candidates += [f"{name}_{geo_code}{ext}" for ext in IMG_EXTS]
-    candidates += [f"{name}{ext}" for ext in IMG_EXTS]
-    for fname in candidates:
-        path = os.path.join(IMAGES_DIR, fname)
-        if os.path.isfile(path):
-            return FSInputFile(path)
+        stems.append(f"{name}_{geo_code}")
+    if vertical:
+        stems.append(f"{name}_{vertical}")
+    stems.append(name)
+
+    for stem in stems:
+        for ext in IMG_EXTS:
+            path = os.path.join(IMAGES_DIR, f"{stem}{ext}")
+            if os.path.isfile(path):
+                return FSInputFile(path)
     return None
 
 

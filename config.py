@@ -140,3 +140,19 @@ def parse_payload(payload: str | None) -> tuple[str | None, str | None]:
         # ГЕО не распознали — весь payload считаем меткой источника
         return None, payload
     return geo, source
+
+
+def parse_vertical(source: str | None) -> str | None:
+    """
+    Достаёт вертикаль из метки источника, чтобы подобрать текст и картинку
+    под креатив: lv_fb_casino → casino, lv_fb_betting_cr3 → betting.
+    Не распознали — None, тогда используется общий текст гейта.
+    """
+    if not source:
+        return None
+    s = source.lower()
+    if "casino" in s or "slots" in s:
+        return "casino"
+    if "betting" in s or "bet" in s or "picks" in s or "sport" in s:
+        return "betting"
+    return None

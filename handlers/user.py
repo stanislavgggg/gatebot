@@ -7,7 +7,7 @@ from aiogram.types import CallbackQuery, Message
 
 import bonuses
 import db
-from config import DEFAULT_GEO, get_geo, parse_payload
+from config import DEFAULT_GEO, get_geo, parse_payload, parse_vertical
 from gate import bonus_kb, find_image, gate_kb, geo_kb, hub_kb, list_kb, missing_channels
 from locales import t
 
@@ -15,13 +15,22 @@ router = Router()
 log = logging.getLogger(__name__)
 
 
-async def send_gate(bot: Bot, chat_id: int, geo, missing: list) -> None:
-    """Гейт: картинка + текст на языке ГЕО. Без картинки — просто текст."""
+async def send_gate(
+    bot: Bot, chat_id: int, geo, missing: list, vertical: str | None = None
+) -> None:
+    """
+    Гейт: картинка + текст на языке ГЕО.
+
+    Если из метки источника определилась вертикаль (casino / betting),
+    берётся текст и картинка под неё — чтобы посадка совпадала с креативом.
+    Иначе используется общий вариант.
+    """
     wording = t(geo.code, "gate_one" if len(geo.channels) == 1 else "gate_many")
-    text = t(geo.code, "gate", n=wording)
+    key = f"gate_{vertical}" if vertical else "gate"
+    text = t(geo.code, key, n=wording)
     kb = gate_kb(missing, geo.code)
 
-    photo = find_image("gate", geo.code)
+    photo = find_image("gate", geo.code, vertical)
     if photo:
         try:
             await bot.send_photo(chat_id, photo=photo, caption=text, reply_markup=kb)
@@ -31,11 +40,13 @@ async def send_gate(bot: Bot, chat_id: int, geo, missing: list) -> None:
     await bot.send_message(chat_id, text, reply_markup=kb)
 
 
-async def show_gate_or_hub(bot: Bot, chat_id: int, user_id: int, geo) -> bool:
+async def show_gate_or_hub(
+    bot: Bot, chat_id: int, user_id: int, geo, vertical: str | None = None
+) -> bool:
     """Не подписан — гейт, подписан — хаб."""
     missing = await missing_channels(bot, geo, user_id)
     if missing:
-        await send_gate(bot, chat_id, geo, missing)
+        await send_gate(bot, chat_id, geo, missing, vertical)
         return False
     await db.mark_passed(user_id)
     await bot.send_message(chat_id, t(geo.code, "welcome"), reply_markup=hub_kb(geo.code))
@@ -66,7 +77,12 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
             return
         await db.set_geo(message.from_user.id, geo.code)
 
-    await show_gate_or_hub(bot, message.chat.id, message.from_user.id, geo)
+    # Вертикаль берём из свежей ссылки, иначе из сохранённого источника
+    user = await db.get_user(message.from_user.id)
+    vertical = parse_vertical(source or payload) or parse_vertical(
+        user.get("source") if user else None
+    )
+    await show_gate_or_hub(bot, message.chat.id, message.from_user.id, geo, vertical)
 
 
 @router.callback_query(F.data.startswith("geo:"))
@@ -162,7 +178,8 @@ async def cmd_bonus(message: Message, bot: Bot):
         await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
         return
     if not user or not user.get("gate_passed"):
-        await show_gate_or_hub(bot, message.chat.id, message.from_user.id, geo)
+        vertical = parse_vertical(user.get("source") if user else None)
+        await show_gate_or_hub(bot, message.chat.id, message.from_user.id, geo, vertical)
         return
     await message.answer(t(geo.code, "hub"), reply_markup=hub_kb(geo.code))
 
@@ -179,6 +196,9 @@ async def fallback(message: Message, bot: Bot):
         await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
         return
     if not user.get("gate_passed"):
-        await show_gate_or_hub(bot, message.chat.id, message.from_user.id, geo)
+        await show_gate_or_hub(
+            bot, message.chat.id, message.from_user.id, geo,
+            parse_vertical(user.get("source")),
+        )
         return
     await message.answer(t(geo.code, "hub"), reply_markup=hub_kb(geo.code))
