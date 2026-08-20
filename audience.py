@@ -4,20 +4,25 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import db
 from config import GEOS
 
+# Короткие подписи: длинные обрезаются в три кнопки в ряд
 VERTICALS = [
-    ("casino", "🎰 Казино"),
-    ("betting", "⚽ Ставки"),
-    ("none", "❓ Без вертикали"),
+    ("casino", "🎰 Casino"),
+    ("betting", "⚽ Betting"),
+    ("none", "❓ None"),
 ]
 
 GATE_LABELS = {
-    "passed": "✅ Прошли гейт",
-    "not_passed": "⛔️ Не прошли гейт",
-    "any": "👥 Все подряд",
+    "passed": "✅ Passed the gate",
+    "not_passed": "⛔️ Did not pass the gate",
+    "any": "👥 Everyone",
 }
 GATE_CYCLE = ["passed", "not_passed", "any"]
 
-DAYS_LABELS = {0: "📅 За всё время", 30: "📅 Активны 30 дней", 7: "📅 Активны 7 дней"}
+DAYS_LABELS = {
+    0: "📅 All time",
+    30: "📅 Active in 30 days",
+    7: "📅 Active in 7 days",
+}
 DAYS_CYCLE = [0, 30, 7]
 
 
@@ -54,15 +59,15 @@ def describe(f: dict) -> str:
         label.split(" ", 1)[1] for code, label in VERTICALS if code in f["verticals"]
     ) or "—"
     lines = [
-        "<b>🎯 Аудитория</b>",
+        "<b>🎯 Audience</b>",
         "",
-        f"ГЕО: {geos}",
-        f"Вертикаль: {verts}",
-        f"Статус: {GATE_LABELS[f['gate']].split(' ', 1)[1]}",
-        f"Активность: {DAYS_LABELS[f['days']].split(' ', 1)[1]}",
+        f"GEO: {geos}",
+        f"Vertical: {verts}",
+        f"Status: {GATE_LABELS[f['gate']].split(' ', 1)[1]}",
+        f"Activity: {DAYS_LABELS[f['days']].split(' ', 1)[1]}",
     ]
     if f.get("source"):
-        lines.append(f"Источник содержит: <code>{f['source']}</code>")
+        lines.append(f"Source contains: <code>{f['source']}</code>")
     return "\n".join(lines)
 
 
@@ -98,12 +103,12 @@ def keyboard(f: dict, count: int, prefix: str = "aud") -> InlineKeyboardMarkup:
     rows.append(
         [
             InlineKeyboardButton(
-                text=f"📨 Получателей: {count} — дальше",
+                text=f"📨 Recipients: {count} — continue",
                 callback_data=f"{prefix}:next",
             )
         ]
     )
-    rows.append([InlineKeyboardButton(text="✖️ Отмена", callback_data=f"{prefix}:cancel")])
+    rows.append([InlineKeyboardButton(text="✖️ Cancel", callback_data=f"{prefix}:cancel")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

@@ -9,7 +9,16 @@ import bonuses
 import db
 import relay
 from config import DEFAULT_GEO, get_geo, parse_payload, parse_vertical
-from gate import bonus_kb, find_image, gate_kb, geo_kb, hub_kb, list_kb, missing_channels
+from gate import (
+    bonus_kb,
+    evaluate,
+    find_image,
+    gate_kb,
+    geo_kb,
+    hub_kb,
+    list_kb,
+    missing_channels,
+)
 from locales import t
 
 router = Router()
@@ -37,7 +46,7 @@ async def send_gate(
             await bot.send_photo(chat_id, photo=photo, caption=text, reply_markup=kb)
             return
         except Exception as e:  # noqa: BLE001
-            log.warning("Не удалось отправить картинку гейта: %s", e)
+            log.warning("Could not send gate image: %s", e)
     await bot.send_message(chat_id, text, reply_markup=kb)
 
 
@@ -110,7 +119,22 @@ async def check_sub(call: CallbackQuery, bot: Bot):
         await call.answer("Unknown region", show_alert=True)
         return
 
-    missing = await missing_channels(bot, geo, call.from_user.id)
+    missing, errors = await evaluate(bot, geo, call.from_user.id)
+
+    if errors:
+        # Проверка сломана — сообщаем админам, а не молчим
+        from config import ADMIN_IDS
+
+        text = "⚠️ <b>Gate check is failing</b>\n" + "\n".join(
+            f"<code>{ch.chat_id}</code> {ch.title}\n<code>{err}</code>"
+            for ch, err in errors
+        ) + "\n\nRun /check for details."
+        for aid in ADMIN_IDS:
+            try:
+                await bot.send_message(aid, text)
+            except Exception:  # noqa: BLE001
+                pass
+
     if missing:
         await call.answer(t(code, "not_subscribed"), show_alert=True)
         try:

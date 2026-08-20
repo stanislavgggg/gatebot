@@ -13,6 +13,9 @@ from locales import t
 log = logging.getLogger(__name__)
 
 OK_STATUSES = {"member", "administrator", "creator"}
+# Все статусы, которые Telegram может вернуть штатно.
+# Что-то другое в ответе check_member = сбой, а не отсутствие подписки.
+VALID_STATUSES = OK_STATUSES | {"left", "kicked", "restricted"}
 IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 
 
@@ -32,12 +35,45 @@ async def is_subscribed(bot: Bot, chat_id: int, user_id: int) -> bool:
         return False
 
 
+async def check_member(bot: Bot, chat_id: int, user_id: int) -> tuple[bool, str]:
+    """
+    Как is_subscribed, но возвращает и причину.
+    (подписан, статус_или_текст_ошибки)
+    """
+    try:
+        member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        return member.status in OK_STATUSES, str(member.status)
+    except TelegramForbiddenError as e:
+        return False, f"FORBIDDEN: {e}"
+    except TelegramBadRequest as e:
+        return False, f"BAD_REQUEST: {e}"
+    except Exception as e:  # noqa: BLE001
+        return False, f"{type(e).__name__}: {e}"
+
+
+async def evaluate(bot: Bot, geo: Geo, user_id: int) -> tuple[list, list]:
+    """
+    Возвращает (каналы_без_подписки, ошибки_проверки).
+
+    Ошибка проверки — это не «юзер не подписан», а поломка на нашей стороне
+    (бот не админ, неверный chat_id). Такие случаи нельзя молча превращать
+    в отказ: иначе гейт не пустит вообще никого, а причина останется невидимой.
+    """
+    missing, errors = [], []
+    for ch in geo.channels:
+        ok, status = await check_member(bot, ch.chat_id, user_id)
+        if not ok:
+            missing.append(ch)
+        # Всё, что не валидный статус участника — это сбой проверки
+        if status not in VALID_STATUSES:
+            errors.append((ch, status))
+            log.error("Проверка канала %s (%s) сломана: %s", ch.chat_id, ch.title, status)
+    return missing, errors
+
+
 async def missing_channels(bot: Bot, geo: Geo, user_id: int) -> list:
     """Каналы ГЕО, на которые юзер НЕ подписан."""
-    missing = []
-    for ch in geo.channels:
-        if not await is_subscribed(bot, ch.chat_id, user_id):
-            missing.append(ch)
+    missing, _ = await evaluate(bot, geo, user_id)
     return missing
 
 

@@ -22,9 +22,9 @@ def user_header(user: dict | None, message: Message) -> str:
     if user:
         geo = (user.get("geo") or "—").upper()
         src = user.get("source") or "—"
-        gate = "✅ прошёл гейт" if user.get("gate_passed") else "⛔️ гейт не пройден"
+        gate = "✅ passed the gate" if user.get("gate_passed") else "⛔️ gate not passed"
         parts.append(f"{geo} · <code>{src}</code> · {gate}")
-    parts.append("↩️ Ответь на это сообщение — уйдёт юзеру")
+    parts.append("↩️ Reply to this message — it goes to the user")
     return "\n".join(parts)
 
 
@@ -52,7 +52,7 @@ async def to_admins(bot: Bot, message: Message) -> None:
             await db.save_relay(aid, head_msg.message_id, message.from_user.id)
             await db.save_relay(aid, body_msg.message_id, message.from_user.id)
         except Exception as e:  # noqa: BLE001
-            log.warning("Не удалось переслать админу %s: %s", aid, e)
+            log.warning("Could not forward to admin %s: %s", aid, e)
 
 
 async def to_user(bot: Bot, message: Message, user_id: int) -> tuple[bool, str]:
@@ -65,10 +65,10 @@ async def to_user(bot: Bot, message: Message, user_id: int) -> tuple[bool, str]:
         )
     except TelegramForbiddenError:
         await db.mark_blocked(user_id)
-        return False, "⛔️ Юзер заблокировал бота — помечен в базе"
+        return False, "⛔️ User blocked the bot — marked in the database"
     except Exception as e:  # noqa: BLE001
-        log.error("Ответ юзеру %s не ушёл: %s", user_id, e)
-        return False, f"❌ Ошибка: {e}"
+        log.error("Reply to user %s failed: %s", user_id, e)
+        return False, f"❌ Error: {e}"
 
     await db.log_message(user_id, "out", message.text or message.caption)
-    return True, "✅ Отправлено"
+    return True, "✅ Sent"
