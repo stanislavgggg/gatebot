@@ -17,7 +17,6 @@ from gate import (
     geo_kb,
     hub_kb,
     list_kb,
-    missing_channels,
 )
 from locales import t
 
@@ -54,7 +53,8 @@ async def show_gate_or_hub(
     bot: Bot, chat_id: int, user_id: int, geo, vertical: str | None = None
 ) -> bool:
     """Не подписан — гейт, подписан — хаб."""
-    missing = await missing_channels(bot, geo, user_id)
+    missing, _errors, results = await evaluate(bot, geo, user_id)
+    await db.save_subs(user_id, geo.code, results)
     if missing:
         await send_gate(bot, chat_id, geo, missing, vertical)
         return False
@@ -119,7 +119,8 @@ async def check_sub(call: CallbackQuery, bot: Bot):
         await call.answer("Unknown region", show_alert=True)
         return
 
-    missing, errors = await evaluate(bot, geo, call.from_user.id)
+    missing, errors, results = await evaluate(bot, geo, call.from_user.id)
+    await db.save_subs(call.from_user.id, geo.code, results)
 
     if errors:
         # Проверка сломана — сообщаем админам, а не молчим

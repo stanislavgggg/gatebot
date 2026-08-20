@@ -51,29 +51,44 @@ async def check_member(bot: Bot, chat_id: int, user_id: int) -> tuple[bool, str]
         return False, f"{type(e).__name__}: {e}"
 
 
-async def evaluate(bot: Bot, geo: Geo, user_id: int) -> tuple[list, list]:
+async def check_all(bot: Bot, geo: Geo, user_id: int) -> list[tuple]:
     """
-    Возвращает (каналы_без_подписки, ошибки_проверки).
+    Проверяет КАЖДЫЙ канал ГЕО и возвращает [(channel, подписан, статус), ...].
+
+    Нужен, чтобы знать не только «прошёл гейт / не прошёл», но и на какие
+    именно каналы юзер подписан — это и есть основа для сегментов рассылки
+    («LV + канал казино», «подписан только на пикс» и т. д.).
+    """
+    out = []
+    for ch in geo.channels:
+        ok, status = await check_member(bot, ch.chat_id, user_id)
+        out.append((ch, ok, status))
+    return out
+
+
+async def evaluate(bot: Bot, geo: Geo, user_id: int) -> tuple[list, list, list]:
+    """
+    Возвращает (каналы_без_подписки, ошибки_проверки, результаты_по_каналам).
 
     Ошибка проверки — это не «юзер не подписан», а поломка на нашей стороне
     (бот не админ, неверный chat_id). Такие случаи нельзя молча превращать
     в отказ: иначе гейт не пустит вообще никого, а причина останется невидимой.
     """
+    results = await check_all(bot, geo, user_id)
     missing, errors = [], []
-    for ch in geo.channels:
-        ok, status = await check_member(bot, ch.chat_id, user_id)
+    for ch, ok, status in results:
         if not ok:
             missing.append(ch)
         # Всё, что не валидный статус участника — это сбой проверки
         if status not in VALID_STATUSES:
             errors.append((ch, status))
             log.error("Проверка канала %s (%s) сломана: %s", ch.chat_id, ch.title, status)
-    return missing, errors
+    return missing, errors, results
 
 
 async def missing_channels(bot: Bot, geo: Geo, user_id: int) -> list:
     """Каналы ГЕО, на которые юзер НЕ подписан."""
-    missing, _ = await evaluate(bot, geo, user_id)
+    missing, _, _ = await evaluate(bot, geo, user_id)
     return missing
 
 

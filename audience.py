@@ -18,6 +18,26 @@ GATE_LABELS = {
 }
 GATE_CYCLE = ["passed", "not_passed", "any"]
 
+# Подписка на конкретный канал. В отличие от «вертикали» (метка из ссылки)
+# это факт: юзер реально сидит в казино-канале / в беттинг-канале.
+CHAN_LABELS = {
+    "any": "📡 Channel: any",
+    "casino": "📡 In the casino channel",
+    "betting": "📡 In the betting channel",
+    "casino_only": "📡 Casino channel only",
+    "betting_only": "📡 Betting channel only",
+}
+CHAN_CYCLE = ["any", "casino", "betting", "casino_only", "betting_only"]
+
+# Интерес по фактическим кликам на бонусы — самый честный сигнал
+INTEREST_LABELS = {
+    "any": "👆 Clicks: any",
+    "casino": "👆 Clicked casino bonuses",
+    "betting": "👆 Clicked betting bonuses",
+    "none": "👆 Never clicked a bonus",
+}
+INTEREST_CYCLE = ["any", "casino", "betting", "none"]
+
 DAYS_LABELS = {
     0: "📅 All time",
     30: "📅 Active in 30 days",
@@ -32,6 +52,8 @@ def default_filters() -> dict:
         "geos": [g.code for g in GEOS.values()],
         "verticals": [v[0] for v in VERTICALS],
         "gate": "passed",
+        "chan": "any",
+        "interest": "any",
         "days": 0,
         "source": None,
     }
@@ -62,8 +84,10 @@ def describe(f: dict) -> str:
         "<b>🎯 Audience</b>",
         "",
         f"GEO: {geos}",
-        f"Vertical: {verts}",
+        f"Ad label: {verts}",
         f"Status: {GATE_LABELS[f['gate']].split(' ', 1)[1]}",
+        f"Channel: {CHAN_LABELS[f.get('chan', 'any')].split(' ', 1)[1]}",
+        f"Interest: {INTEREST_LABELS[f.get('interest', 'any')].split(' ', 1)[1]}",
         f"Activity: {DAYS_LABELS[f['days']].split(' ', 1)[1]}",
     ]
     if f.get("source"):
@@ -98,6 +122,21 @@ def keyboard(f: dict, count: int, prefix: str = "aud") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=GATE_LABELS[f["gate"]], callback_data=f"{prefix}:gate")]
     )
     rows.append(
+        [
+            InlineKeyboardButton(
+                text=CHAN_LABELS[f.get("chan", "any")], callback_data=f"{prefix}:chan"
+            )
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=INTEREST_LABELS[f.get("interest", "any")],
+                callback_data=f"{prefix}:interest",
+            )
+        ]
+    )
+    rows.append(
         [InlineKeyboardButton(text=DAYS_LABELS[f["days"]], callback_data=f"{prefix}:days")]
     )
     rows.append(
@@ -125,6 +164,10 @@ def apply_action(f: dict, action: str, value: str | None) -> dict:
         f["verticals"] = toggle(f["verticals"], value)
     elif action == "gate":
         f["gate"] = cycle(f["gate"], GATE_CYCLE)
+    elif action == "chan":
+        f["chan"] = cycle(f.get("chan", "any"), CHAN_CYCLE)
+    elif action == "interest":
+        f["interest"] = cycle(f.get("interest", "any"), INTEREST_CYCLE)
     elif action == "days":
         f["days"] = cycle(f["days"], DAYS_CYCLE)
     return f

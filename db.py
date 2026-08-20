@@ -1,9 +1,12 @@
 """Хранилище: SQLite через aiosqlite."""
 import datetime as dt
+import logging
 
 import aiosqlite
 
 from config import DB_PATH
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -36,6 +39,23 @@ CREATE TABLE IF NOT EXISTS bonus_clicks (
     clicked_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_clicks_bonus ON bonus_clicks(bonus_id);
+CREATE INDEX IF NOT EXISTS idx_clicks_user  ON bonus_clicks(user_id);
+
+-- Подписка на КАЖДЫЙ канал отдельно. Гейт требует все каналы ГЕО сразу,
+-- но для сегментов рассылки важно знать конкретику: кто сидит в казино-канале,
+-- кто в беттинг-канале, а кто подписался только на один и гейт не прошёл.
+CREATE TABLE IF NOT EXISTS channel_subs (
+    user_id    INTEGER,
+    chat_id    INTEGER,
+    geo        TEXT,
+    vertical   TEXT,               -- casino / betting (вертикаль канала)
+    title      TEXT,
+    subscribed INTEGER DEFAULT 0,
+    checked_at TEXT,
+    PRIMARY KEY (user_id, chat_id)
+);
+CREATE INDEX IF NOT EXISTS idx_subs_user ON channel_subs(user_id);
+CREATE INDEX IF NOT EXISTS idx_subs_vert ON channel_subs(vertical, subscribed);
 
 CREATE TABLE IF NOT EXISTS broadcasts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +133,44 @@ async def _migrate(db) -> None:
     if updated:
         await db.commit()
 
+    await _backfill_subs(db)
+
+
+async def _backfill_subs(db) -> None:
+    """
+    Заполняет channel_subs для тех, кто уже прошёл гейт до появления таблицы.
+
+    Прошёл гейт = был подписан на ВСЕ каналы своего ГЕО, иначе бы не прошёл.
+    Так старая база сразу становится сегментируемой, без повторного опроса
+    Telegram по каждому юзеру.
+    """
+    from config import GEOS
+
+    cur = await db.execute("SELECT COUNT(*) FROM channel_subs")
+    if (await cur.fetchone())[0]:
+        return  # уже заполняли — второй раз не трогаем
+
+    cur = await db.execute(
+        "SELECT user_id, geo FROM users WHERE gate_passed = 1 AND geo IS NOT NULL"
+    )
+    rows = await cur.fetchall()
+    added = 0
+    for uid, geo_code in rows:
+        geo = GEOS.get((geo_code or "").lower())
+        if not geo:
+            continue
+        for ch in geo.channels:
+            await db.execute(
+                """INSERT OR IGNORE INTO channel_subs
+                   (user_id, chat_id, geo, vertical, title, subscribed, checked_at)
+                   VALUES (?,?,?,?,?,1,?)""",
+                (uid, ch.chat_id, geo.code, ch.vertical, ch.title, now()),
+            )
+            added += 1
+    if added:
+        await db.commit()
+        log.info("Бэкфилл подписок: записей %s", added)
+
 
 async def upsert_user(
     user_id: int,
@@ -185,6 +243,31 @@ async def get_user(user_id: int) -> dict | None:
         return dict(row) if row else None
 
 
+async def save_subs(user_id: int, geo_code: str, results: list) -> None:
+    """
+    Пишет состояние подписки по каждому каналу.
+
+    results: [(channel, подписан, статус), ...] из gate.evaluate().
+    Вызывается на каждой проверке гейта, поэтому картина всегда свежая.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        for ch, ok, _status in results:
+            await db.execute(
+                """INSERT INTO channel_subs
+                   (user_id, chat_id, geo, vertical, title, subscribed, checked_at)
+                   VALUES (?,?,?,?,?,?,?)
+                   ON CONFLICT(user_id, chat_id) DO UPDATE SET
+                       subscribed = excluded.subscribed,
+                       checked_at = excluded.checked_at,
+                       title      = excluded.title,
+                       vertical   = excluded.vertical,
+                       geo        = excluded.geo""",
+                (user_id, ch.chat_id, geo_code, ch.vertical, ch.title,
+                 1 if ok else 0, now()),
+            )
+        await db.commit()
+
+
 async def log_click(
     user_id: int, bonus_id: str, geo: str | None, vertical: str | None
 ) -> None:
@@ -222,6 +305,35 @@ def _build_filter(f: dict) -> tuple[str, list]:
         if "none" in verts:
             parts.append("vertical IS NULL")
         q += " AND (" + " OR ".join(parts) + ")"
+
+    # Подписка на конкретный канал (а не «прошёл гейт вообще»)
+    chan = f.get("chan") or "any"
+    if chan != "any":
+        sub = (
+            "SELECT 1 FROM channel_subs cs"
+            " WHERE cs.user_id = users.user_id AND cs.subscribed = 1"
+            " AND cs.vertical = ?"
+        )
+        if chan in ("casino", "betting"):
+            q += f" AND EXISTS ({sub})"
+            params.append(chan)
+        elif chan in ("casino_only", "betting_only"):
+            want = chan.split("_")[0]
+            other = "betting" if want == "casino" else "casino"
+            q += f" AND EXISTS ({sub}) AND NOT EXISTS ({sub})"
+            params += [want, other]
+
+    # Интерес по фактическим кликам на бонусы
+    interest = f.get("interest") or "any"
+    if interest != "any":
+        clicked = (
+            "SELECT 1 FROM bonus_clicks bc WHERE bc.user_id = users.user_id"
+        )
+        if interest == "none":
+            q += f" AND NOT EXISTS ({clicked})"
+        else:
+            q += f" AND EXISTS ({clicked} AND bc.vertical = ?)"
+            params.append(interest)
 
     days = f.get("days") or 0
     if days:
