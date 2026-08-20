@@ -1,51 +1,195 @@
 {
   "lv": [
     {
-      "id": "1xbet_lv_welcome",
-      "brand": "1xBet",
-      "title": "Bonuss līdz 100 EUR",
-      "description": "100% no pirmās iemaksas. Minimālā iemaksa 10 EUR.",
-      "url": "https://your-affiliate-link/1xbet-lv",
-      "vertical": "betting",
-      "expires": "2026-12-31"
-    },
-    {
-      "id": "1win_lv_casino",
-      "brand": "1win",
-      "title": "200 bezmaksas griezieni",
-      "description": "Par pirmo iemaksu no 20 EUR. Bez likmes prasībām.",
-      "url": "https://your-affiliate-link/1win-lv",
+      "id": "immerion_lv_casino",
+      "brand": "Immerion",
+      "title": "100% līdz 1000 € + 100 griezieni",
+      "description": "Pirmās iemaksas bonuss: 100% līdz 1000 € un 100 bezmaksas griezieni uz Sweet Bonanza 1000. Sveiciena pakete aptver pirmās četras iemaksas. Minimālā iemaksa 15 €, likmju prasība 40x. Papildus 10% ikdienas un 10% iknedēļas cashback.",
+      "url": "https://imrpromo.com/dbjdrdypz?loyaltyCode=GURU",
       "vertical": "casino",
-      "expires": "2026-12-31"
+      "expires": null
     },
     {
-      "id": "melbet_lv_freebet",
-      "brand": "Melbet",
-      "title": "Bezmaksas likme 25 EUR",
-      "description": "Reģistrējies un saņem bezriska likmi.",
-      "url": "https://your-affiliate-link/melbet-lv",
+      "id": "ybets_lv_casino",
+      "brand": "Ybets",
+      "title": "200% līdz 2000 € + 100 griezieni",
+      "description": "Pirmajai iemaksai: 200% līdz 2000 € un 100 bezmaksas griezieni uz Gates of Olympus 1000. Minimālā iemaksa 15 €, likmju prasība 30x. Papildus 10% ikdienas un 10% iknedēļas cashback.",
+      "url": "https://ybetspromo.io/dhvlcgdia?loyaltyCode=uBg3xK4u",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "snatch_lv_casino",
+      "brand": "Snatch",
+      "title": "200% līdz 1000 € + 100 griezieni",
+      "description": "Pirmajai iemaksai: 200% līdz 1000 € un 100 bezmaksas griezieni uz The Dog House. Minimālā iemaksa 20 €, likmju prasība 35x. Sveiciena pakete aptver pirmās četras iemaksas.",
+      "url": "https://snatchcasinos.com/dk71t3gny?loyaltyCode=GG_20FS",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "iwild_lv_casino",
+      "brand": "iWild",
+      "title": "200% līdz 1000 € + 100 griezieni",
+      "description": "Pirmajai iemaksai: 200% līdz 1000 € un 100 bezmaksas griezieni uz Pragmatic Play slotiem. Minimālā iemaksa 20 €, likmju prasība 35x. Kopā līdz četrām iemaksām.",
+      "url": "https://iwildmedia.com/dxwp8keib?loyaltyCode=GG_20FS",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "iris_lv_casino",
+      "brand": "Iris.Casino",
+      "title": "125% līdz 600 € pirmajai iemaksai",
+      "description": "Sveiciena pakete līdz 1300 € par pirmajām trim iemaksām (125% / 100% / 125%). Minimālā iemaksa 10 €, likmju prasība 40x, maksimālā izmaksa 10x no bonusa. Katru nedēļu papildus līdz 180 griezieniem Reload Spin akcijā.",
+      "url": "https://irisroute64.com/cde8bbf1d",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "beef_lv_casino",
+      "brand": "Beef.casino",
+      "title": "50% līdz 300 € pirmajai iemaksai",
+      "description": "Bonuss aktivizējas automātiski, promo kods nav vajadzīgs. Likmju prasība 45x, maksimālā izmaksa 10x no bonusa. Papildus iknedēļas cashback līdz 50% un rakeback.",
+      "url": "https://beefway69.com/c72d7a3e8",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "rollcasino_lv_casino",
+      "brand": "Rollcasino",
+      "title": "150% līdz 1000 € + 100 griezieni",
+      "description": "Pirmajai iemaksai: 150% līdz 1000 €, 100 bezmaksas griezieni un piekļuve Prize Wheel. Minimālā iemaksa 20 €, likmju prasība 35x (jāizpilda 7 dienās). Kopā līdz trim iemaksām.",
+      "url": "https://kazinoguru.lv/telegram/rollcasino",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "bitguruz_lv_casino",
+      "brand": "Bitguruz",
+      "title": "100% līdz 1000 € + 100 griezieni",
+      "description": "Sveiciena pakete 300% līdz 3000 € un 300 griezieni par pirmajām trim iemaksām. Minimālā iemaksa 30 €, likmju prasība 30x. Papildus 10% ikdienas cashback.",
+      "url": "https://kazinoguru.lv/telegram/bitguruz",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "lussurio_lv_casino",
+      "brand": "Lussurio",
+      "title": "200% līdz 870 € + 100 griezieni",
+      "description": "Pirmajai iemaksai: 200% līdz 870 € un 100 bezmaksas griezieni. Minimālā iemaksa 10 €, likmju prasība 30x, griezienu laimestiem 40x. Kopā līdz četrām iemaksām.",
+      "url": "https://kazinoguru.lv/telegram/lussurio",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "lollyspins_lv_casino",
+      "brand": "Lollyspins",
+      "title": "100% līdz 500 € + 100 griezieni",
+      "description": "Pirmajai iemaksai: 100% līdz 500 € un 100 bezmaksas griezieni. Minimālā iemaksa 25 €, likmju prasība 40x (griezienu laimestiem 35x). Papildus cashback līdz 20%.",
+      "url": "https://kazinoguru.lv/telegram/lollyspins",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "immerion_lv_betting",
+      "brand": "Immerion",
+      "title": "100% līdz 1000 € pirmajai iemaksai",
+      "description": "Sporta likmes un kazino vienā kontā. Pirmās iemaksas bonuss 100% līdz 1000 €, minimālā iemaksa 15 €, likmju prasība 40x. Papildus 10% ikdienas un 10% iknedēļas cashback par zaudējumiem.",
+      "url": "https://kazinoguru.lv/lvtipster/immerion",
+      "vertical": "betting",
+      "expires": null
+    },
+    {
+      "id": "ybets_lv_betting",
+      "brand": "Ybets",
+      "title": "200% līdz 2000 € + 100 griezieni",
+      "description": "Bukmeikers ar tūkstošiem ikdienas tirgu un kazino vienā kontā. Sveiciena bonuss 200% līdz 2000 €, minimālā iemaksa 15 €, likmju prasība 30x. Cashback 10% dienā un 10% nedēļā par sporta un kazino zaudējumiem (likmju prasība 3x).",
+      "url": "https://kazinoguru.lv/lvtipster/ybets",
       "vertical": "betting",
       "expires": null
     }
   ],
   "lt": [
     {
-      "id": "1xbet_lt_welcome",
-      "brand": "1xBet",
-      "title": "Bonusas iki 100 EUR",
-      "description": "100% nuo pirmojo depozito. Minimalus depozitas 10 EUR.",
-      "url": "https://your-affiliate-link/1xbet-lt",
+      "id": "immerion_lt_casino",
+      "brand": "Immerion",
+      "title": "100% iki 1000 € + 100 sukimų",
+      "description": "Pirmojo depozito bonusas: 100% iki 1000 € ir 100 nemokamų sukimų Sweet Bonanza 1000 žaidime. Sveikinimo paketas apima pirmus keturis depozitus. Minimalus depozitas 15 €, statymo reikalavimas 40x. Papildomai 10% dienos ir 10% savaitės cashback.",
+      "url": "https://casinoguru.lt/tgmrk/immerion/",
       "vertical": "casino",
-      "expires": "2026-12-31"
+      "expires": null
     },
     {
-      "id": "1win_lt_casino",
-      "brand": "1win",
-      "title": "200 nemokamų sukimų",
-      "description": "Už pirmąjį depozitą nuo 20 EUR.",
-      "url": "https://your-affiliate-link/1win-lt",
+      "id": "ybets_lt_casino",
+      "brand": "Ybets",
+      "title": "200% iki 2000 € + 100 sukimų",
+      "description": "Pirmajam depozitui: 200% iki 2000 € ir 100 nemokamų sukimų Gates of Olympus 1000 žaidime. Minimalus depozitas 15 €, statymo reikalavimas 30x. Papildomai 10% dienos ir 10% savaitės cashback.",
+      "url": "https://casinoguru.lt/tgmrk/ybets/",
       "vertical": "casino",
-      "expires": "2026-12-31"
+      "expires": null
+    },
+    {
+      "id": "snatch_lt_casino",
+      "brand": "Snatch",
+      "title": "200% iki 1000 € + 100 sukimų",
+      "description": "Pirmajam depozitui: 200% iki 1000 € ir 100 nemokamų sukimų The Dog House žaidime. Minimalus depozitas 20 €, statymo reikalavimas 35x. Sveikinimo paketas apima pirmus keturis depozitus.",
+      "url": "https://casinoguru.lt/tgmrk/snatchcasino/",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "iwild_lt_casino",
+      "brand": "iWild",
+      "title": "200% iki 1000 € + 100 sukimų",
+      "description": "Pirmajam depozitui: 200% iki 1000 € ir 100 nemokamų sukimų Pragmatic Play lošimo automatuose. Minimalus depozitas 20 €, statymo reikalavimas 35x. Iš viso iki keturių depozitų.",
+      "url": "https://casinoguru.lt/tgmrk/iwild/",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "iris_lt_casino",
+      "brand": "Iris.Casino",
+      "title": "125% iki 600 € pirmajam depozitui",
+      "description": "Sveikinimo paketas iki 1300 € už pirmus tris depozitus (125% / 100% / 125%). Minimalus depozitas 10 €, statymo reikalavimas 40x, maksimalus išmokėjimas 10x nuo bonuso. Kas savaitę papildomai iki 180 sukimų Reload Spin akcijoje.",
+      "url": "https://casinoguru.lt/tgmrk/iris.casino/",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "beef_lt_casino",
+      "brand": "Beef.casino",
+      "title": "50% iki 300 € pirmajam depozitui",
+      "description": "Bonusas aktyvuojamas automatiškai, promo kodo nereikia. Statymo reikalavimas 45x, maksimalus išmokėjimas 10x nuo bonuso. Papildomai savaitės cashback iki 50% ir rakeback.",
+      "url": "https://casinoguru.lt/tgmrk/beef.casino/",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "rollcasino_lt_casino",
+      "brand": "Rollcasino",
+      "title": "150% iki 1000 € + 100 sukimų",
+      "description": "Pirmajam depozitui: 150% iki 1000 €, 100 nemokamų sukimų ir Prize Wheel. Minimalus depozitas 20 €, statymo reikalavimas 35x (įvykdyti per 7 dienas). Iš viso iki trijų depozitų.",
+      "url": "https://track.goldpartners.co/visit/?bta=35293&nci=5351&utm_campaign=TG_luckyguru",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "bitguruz_lt_casino",
+      "brand": "Bitguruz",
+      "title": "100% iki 1000 € + 100 sukimų",
+      "description": "Sveikinimo paketas 300% iki 3000 € ir 300 sukimų už pirmus tris depozitus. Minimalus depozitas 30 €, statymo reikalavimas 30x. Papildomai 10% dienos cashback.",
+      "url": "https://bitguruz777.com/tsdzvmkdz",
+      "vertical": "casino",
+      "expires": null
+    },
+    {
+      "id": "lussurio_lt_casino",
+      "brand": "Lussurio",
+      "title": "200% iki 870 € + 100 sukimų",
+      "description": "Pirmajam depozitui: 200% iki 870 € ir 100 nemokamų sukimų. Minimalus depozitas 10 €, statymo reikalavimas 30x, sukimų laimėjimams 40x. Iš viso iki keturių depozitų.",
+      "url": "https://lussurios.com/dedfrpddg",
+      "vertical": "casino",
+      "expires": null
     }
   ]
 }
