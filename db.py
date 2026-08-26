@@ -227,6 +227,16 @@ async def mark_passed(user_id: int) -> None:
         await db.commit()
 
 
+async def revoke_pass(user_id: int) -> None:
+    """Сбрасывает гейт: юзер отписался от канала после того, как прошёл."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET gate_passed = 0, last_check = ? WHERE user_id = ?",
+            (now(), user_id),
+        )
+        await db.commit()
+
+
 async def mark_blocked(user_id: int) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(

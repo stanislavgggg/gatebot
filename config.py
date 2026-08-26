@@ -57,6 +57,35 @@ class Geo:
     gate_text: str = ""
     welcome: str = ""
 
+    @property
+    def is_ready(self) -> bool:
+        """
+        ГЕО готово к работе, только если у него есть хотя бы один канал.
+
+        Без каналов гейт пропускает всех подряд (missing пустой →
+        mark_passed), то есть юзер получает доступ, ни на что не
+        подписавшись. Поэтому такие ГЕО не показываем и не назначаем
+        автоматически — они включатся сами, как только появятся
+        переменные окружения с каналом.
+        """
+        return bool(self.channels)
+
+
+def ready_geos() -> list["Geo"]:
+    """Только те ГЕО, у которых настроены каналы."""
+    return [g for g in GEOS.values() if g.is_ready]
+
+
+def _channels(*items: Channel) -> list[Channel]:
+    """
+    Отбрасывает каналы без настроенного chat_id (значение 0).
+
+    Нужно для ГЕО, где канал ещё не заведён: пустой список каналов =
+    гейта нет, юзер сразу попадает в хаб. Так ГЕО можно включить
+    заранее, а канал добавить позже одной переменной окружения.
+    """
+    return [ch for ch in items if ch.chat_id]
+
 
 GEOS: dict[str, Geo] = {
     "lv": Geo(
@@ -99,6 +128,29 @@ GEOS: dict[str, Geo] = {
             # ),
         ],
     ),
+    # ------------------------------------------------- REST OF THE WORLD (EN)
+    # Всё, что не LV и не LT. Тексты — английские (locales.py → "en").
+    # Каналы опциональны: пока CH_INT_* не заданы, гейта нет и юзер
+    # сразу попадает в бонус-хаб.
+    "en": Geo(
+        code="en",
+        title="Rest of the world",
+        flag="🌍",
+        channels=_channels(
+            Channel(
+                chat_id=_int_env("CH_INT_CASINO", 0),
+                title=os.getenv("CH_INT_CASINO_TITLE", "Casino"),
+                url=os.getenv("CH_INT_CASINO_URL", ""),
+                vertical="casino",
+            ),
+            Channel(
+                chat_id=_int_env("CH_INT_BETTING", 0),
+                title=os.getenv("CH_INT_BETTING_TITLE", "Betting"),
+                url=os.getenv("CH_INT_BETTING_URL", ""),
+                vertical="betting",
+            ),
+        ),
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -114,9 +166,13 @@ IMAGES_DIR = os.getenv("IMAGES_DIR", "image")
 
 
 def get_geo(code: str | None) -> Geo | None:
+    """Возвращает ГЕО по коду. Ненастроенные (без каналов) — как несуществующие."""
     if not code:
         return None
-    return GEOS.get(code.lower())
+    geo = GEOS.get(code.lower())
+    if geo and not geo.is_ready:
+        return None
+    return geo
 
 
 def parse_payload(payload: str | None) -> tuple[str | None, str | None]:

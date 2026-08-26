@@ -2,7 +2,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import db
-from config import GEOS
+from config import GEOS, ready_geos
 
 # Короткие подписи: длинные обрезаются в три кнопки в ряд
 VERTICALS = [
@@ -49,7 +49,7 @@ DAYS_CYCLE = [0, 30, 7]
 def default_filters() -> dict:
     """По умолчанию: все ГЕО, все вертикали, прошедшие гейт, без ограничения дат."""
     return {
-        "geos": [g.code for g in GEOS.values()],
+        "geos": [g.code for g in ready_geos()],
         "verticals": [v[0] for v in VERTICALS],
         "gate": "passed",
         "chan": "any",
@@ -104,7 +104,7 @@ def keyboard(f: dict, count: int, prefix: str = "aud") -> InlineKeyboardMarkup:
             text=f"{'✅' if g.code in f['geos'] else '⬜️'} {g.flag} {g.code.upper()}",
             callback_data=f"{prefix}:geo:{g.code}",
         )
-        for g in GEOS.values()
+        for g in ready_geos()
     ]
     rows.append(geo_row)
 

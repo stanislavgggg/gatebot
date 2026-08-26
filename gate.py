@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 import bonuses
-from config import GEOS, IMAGES_DIR, Geo
+from config import GEOS, IMAGES_DIR, Geo, ready_geos
 from locales import t
 
 log = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ def geo_kb() -> InlineKeyboardMarkup:
                     text=f"{g.flag} {g.title}", callback_data=f"geo:{g.code}"
                 )
             ]
-            for g in GEOS.values()
+            for g in ready_geos()
         ]
     )
 

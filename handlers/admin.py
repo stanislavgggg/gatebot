@@ -24,7 +24,7 @@ import bonuses
 import db
 import gate as gate_mod
 import relay
-from config import ADMIN_IDS, BROADCAST_SLEEP, GEOS
+from config import ADMIN_IDS, BROADCAST_SLEEP, GEOS, ready_geos
 
 router = Router()
 log = logging.getLogger(__name__)
@@ -142,6 +142,10 @@ async def cmd_check(message: Message, bot: Bot):
 
     for g in GEOS.values():
         lines.append(f"<b>{g.flag} {g.title}</b>")
+        if not g.is_ready:
+            lines.append("  ⚠️ No channels configured — this GEO is disabled")
+            lines.append("")
+            continue
         for ch in g.channels:
             lines.append(f"<code>{ch.chat_id}</code> — {ch.title}")
 
@@ -186,7 +190,7 @@ async def cmd_links(message: Message, bot: Bot):
         return
     me = await bot.get_me()
     lines = ["<b>🔗 Links for ad campaigns</b>", ""]
-    for g in GEOS.values():
+    for g in ready_geos():
         lines.append(f"{g.flag} <b>{g.title}</b>")
         lines.append(f"<code>https://t.me/{me.username}?start={g.code}</code>")
         lines.append(
