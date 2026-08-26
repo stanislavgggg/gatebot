@@ -49,6 +49,24 @@ async def send_gate(
     await bot.send_message(chat_id, text, reply_markup=kb)
 
 
+def resolve_geo(user: dict | None, language_code: str | None):
+    """
+    Определяет ГЕО пользователя.
+
+    Порядок приоритета:
+      1. ГЕО, уже сохранённое за юзером в базе (он либо пришёл по
+         geo-ссылке, либо выбрал вручную ранее) — не перетираем.
+      2. Язык клиента Telegram (from_user.language_code), если он
+         совпадает с одним из поддерживаемых ГЕО (lv / lt).
+      3. Ничего не подошло — None, вызывающий код должен показать
+         выбор страны (geo_kb), а НЕ тихо подставлять DEFAULT_GEO.
+    """
+    saved = get_geo(user.get("geo")) if user else None
+    if saved:
+        return saved
+    return get_geo(language_code)
+
+
 async def show_gate_or_hub(
     bot: Bot, chat_id: int, user_id: int, geo, vertical: str | None = None
 ) -> bool:
@@ -83,7 +101,7 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
 
     if geo is None:
         user = await db.get_user(message.from_user.id)
-        geo = get_geo(user.get("geo") if user else None) or get_geo(DEFAULT_GEO)
+        geo = resolve_geo(user, message.from_user.language_code)
         if geo is None:
             await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
             return
@@ -199,7 +217,7 @@ async def show_bonus(call: CallbackQuery):
 @router.message(Command("bonuses"))
 async def cmd_bonus(message: Message, bot: Bot):
     user = await db.get_user(message.from_user.id)
-    geo = get_geo(user.get("geo") if user else None) or get_geo(DEFAULT_GEO)
+    geo = resolve_geo(user, message.from_user.language_code)
     if not geo:
         await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
         return
@@ -208,6 +226,13 @@ async def cmd_bonus(message: Message, bot: Bot):
         await show_gate_or_hub(bot, message.chat.id, message.from_user.id, geo, vertical)
         return
     await message.answer(t(geo.code, "hub"), reply_markup=hub_kb(geo.code))
+
+
+@router.message(Command("language"))
+@router.message(Command("lang"))
+async def cmd_language(message: Message):
+    """Позволяет юзеру сменить/сбросить ГЕО-язык вручную в любой момент."""
+    await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
 
 
 @router.message()
@@ -223,7 +248,7 @@ async def fallback(message: Message, bot: Bot):
     if not user:
         await message.answer(t(None, "start_hint"))
         return
-    geo = get_geo(user.get("geo")) or get_geo(DEFAULT_GEO)
+    geo = resolve_geo(user, message.from_user.language_code)
     if not geo:
         await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
         return
