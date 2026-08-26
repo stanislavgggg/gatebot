@@ -121,6 +121,12 @@ async def cmd_reload(message: Message):
     parts = [f"{geo}: {len(items)}" for geo, items in data.items()]
     soon = bonuses.expiring_soon(7)
     text = f"♻️ Bonuses loaded: <b>{total}</b>\n" + "\n".join(parts)
+    blank = bonuses.LAST_LOAD.get("blank", 0)
+    if blank:
+        text += (
+            f"\n\n⚠️ Skipped <b>{blank}</b> offer(s) with no bonus terms — "
+            "fill in the title to make them live."
+        )
     if soon:
         text += "\n\n⏳ <b>Expiring within a week:</b>\n" + "\n".join(
             f"• {b.brand} — {b.title} (until {b.expires})" for b in soon

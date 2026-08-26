@@ -197,10 +197,21 @@ def hub_kb(geo_code: str, lang: str) -> InlineKeyboardMarkup:
 
 
 def list_kb(geo_code: str, vertical: str, lang: str) -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=f"{b.brand} — {b.title}", callback_data=f"bonus:{b.id}")]
-        for b in bonuses.get(geo_code, vertical)
-    ]
+    """
+    Список офферов. Первый — самый выгодный (сортировка в bonuses.get),
+    и он помечается бейджем: без метки «самый жирный сверху» читается
+    просто как случайный порядок и не даёт прироста кликов.
+    """
+    items = bonuses.get(geo_code, vertical)
+    rows = []
+    for i, b in enumerate(items):
+        label = f"{b.brand} — {b.title}"
+        # Бейдж только если офферов больше одного — иначе он бессмыслен
+        if i == 0 and len(items) > 1:
+            label = f"{t(lang, 'badge_top')} {label}"
+        rows.append(
+            [InlineKeyboardButton(text=label, callback_data=f"bonus:{b.id}")]
+        )
     rows.append(
         [
             InlineKeyboardButton(
