@@ -13,8 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
     user_id      INTEGER PRIMARY KEY,
     username     TEXT,
     first_name   TEXT,
-    lang         TEXT,
-    geo          TEXT,               -- lv / lt
+    lang         TEXT,               -- language_code клиента Telegram (сырой)
+    ui_lang      TEXT,               -- язык интерфейса, выбранный юзером
+    geo          TEXT,               -- lv / lt / en (офферы + каналы)
     vertical     TEXT,               -- casino / betting / NULL (не определена)
     source       TEXT,               -- метка кампании из deep-link
     gate_passed  INTEGER DEFAULT 0,
@@ -108,6 +109,12 @@ async def _migrate(db) -> None:
 
     if "vertical" not in cols:
         await db.execute("ALTER TABLE users ADD COLUMN vertical TEXT")
+        await db.commit()
+
+    # Язык интерфейса отделён от ГЕО: житель Латвии может читать бота
+    # по-английски, оставаясь при этом на латвийских офферах и гейте.
+    if "ui_lang" not in cols:
+        await db.execute("ALTER TABLE users ADD COLUMN ui_lang TEXT")
         await db.commit()
 
     await db.execute(
@@ -207,6 +214,15 @@ async def upsert_user(
                 (user_id, username, first_name, lang, geo, vertical, source,
                  now(), now()),
             )
+        await db.commit()
+
+
+async def set_ui_lang(user_id: int, lang: str) -> None:
+    """Запоминает выбранный язык интерфейса. ГЕО при этом не трогается."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET ui_lang = ? WHERE user_id = ?", (lang, user_id)
+        )
         await db.commit()
 
 

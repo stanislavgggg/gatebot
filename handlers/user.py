@@ -9,7 +9,14 @@ from aiogram.types import CallbackQuery, Message
 import bonuses
 import db
 import relay
-from config import DEFAULT_GEO, RECHECK_DAYS, get_geo, parse_payload, parse_vertical
+from config import (
+    ASK_LANG_ON_START,
+    DEFAULT_GEO,
+    RECHECK_DAYS,
+    get_geo,
+    parse_payload,
+    parse_vertical,
+)
 from gate import (
     bonus_kb,
     evaluate,
@@ -17,16 +24,20 @@ from gate import (
     gate_kb,
     geo_kb,
     hub_kb,
+    lang_kb,
     list_kb,
 )
-from locales import t
+from locales import FALLBACK, LOCALES, normalize_lang, t
+
+LOCALE_CODES = set(LOCALES)
 
 router = Router()
 log = logging.getLogger(__name__)
 
 
 async def send_gate(
-    bot: Bot, chat_id: int, geo, missing: list, vertical: str | None = None
+    bot: Bot, chat_id: int, geo, missing: list, lang: str,
+    vertical: str | None = None,
 ) -> None:
     """
     Гейт: картинка + текст на языке ГЕО.
@@ -35,10 +46,10 @@ async def send_gate(
     берётся текст и картинка под неё — чтобы посадка совпадала с креативом.
     Иначе используется общий вариант.
     """
-    wording = t(geo.code, "gate_one" if len(geo.channels) == 1 else "gate_many")
+    wording = t(lang, "gate_one" if len(geo.channels) == 1 else "gate_many")
     key = f"gate_{vertical}" if vertical else "gate"
-    text = t(geo.code, key, n=wording)
-    kb = gate_kb(missing, geo.code)
+    text = t(lang, key, n=wording)
+    kb = gate_kb(missing, geo.code, lang)
 
     photo = find_image("gate", geo.code, vertical)
     if photo:
@@ -76,6 +87,34 @@ def resolve_geo(user: dict | None, language_code: str | None):
     return get_geo(DEFAULT_GEO)
 
 
+def resolve_lang(user: dict | None, language_code: str | None) -> str:
+    """
+    Определяет язык интерфейса — НЕЗАВИСИМО от ГЕО.
+
+    ГЕО отвечает за офферы и каналы гейта, язык — только за тексты.
+    Житель Латвии, которому удобнее по-английски, читает бота
+    по-английски, но остаётся на латвийских бонусах и латвийском гейте.
+
+    Порядок:
+      1. Язык, выбранный юзером вручную (/language) — не перетираем.
+      2. Язык клиента Telegram, если для него есть перевод.
+      3. Язык ГЕО, если для него есть перевод (латвиец → латышский).
+      4. Английский.
+    """
+    if user and user.get("ui_lang") in LOCALE_CODES:
+        return user["ui_lang"]
+
+    by_client = normalize_lang(language_code)
+    if by_client:
+        return by_client
+
+    by_geo = normalize_lang(user.get("geo") if user else None)
+    if by_geo:
+        return by_geo
+
+    return FALLBACK
+
+
 async def ensure_access(bot: Bot, user: dict | None, user_id: int, geo) -> bool:
     """
     Подтверждает, что юзер всё ещё имеет право на доступ.
@@ -108,30 +147,33 @@ async def ensure_access(bot: Bot, user: dict | None, user_id: int, geo) -> bool:
     return True
 
 
-async def send_hub(bot: Bot, chat_id: int, geo, text_key: str = "hub") -> None:
+async def send_hub(
+    bot: Bot, chat_id: int, geo, lang: str, text_key: str = "hub"
+) -> None:
     """
     Отправляет бонус-хаб. Если под ГЕО ещё нет ни одного оффера,
     клавиатура была бы пустой — вместо неё показываем «пока пусто».
     """
     if bonuses.counts(geo.code)["total"] == 0:
-        await bot.send_message(chat_id, t(geo.code, "empty"))
+        await bot.send_message(chat_id, t(lang, "empty"))
         return
     await bot.send_message(
-        chat_id, t(geo.code, text_key), reply_markup=hub_kb(geo.code)
+        chat_id, t(lang, text_key), reply_markup=hub_kb(geo.code, lang)
     )
 
 
 async def show_gate_or_hub(
-    bot: Bot, chat_id: int, user_id: int, geo, vertical: str | None = None
+    bot: Bot, chat_id: int, user_id: int, geo, lang: str,
+    vertical: str | None = None,
 ) -> bool:
     """Не подписан — гейт, подписан — хаб."""
     missing, _errors, results = await evaluate(bot, geo, user_id)
     await db.save_subs(user_id, geo.code, results)
     if missing:
-        await send_gate(bot, chat_id, geo, missing, vertical)
+        await send_gate(bot, chat_id, geo, missing, lang, vertical)
         return False
     await db.mark_passed(user_id)
-    await send_hub(bot, chat_id, geo, "welcome")
+    await send_hub(bot, chat_id, geo, lang, "welcome")
     return True
 
 
@@ -153,18 +195,26 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
         vertical=vertical_from_link,
     )
 
+    user = await db.get_user(message.from_user.id)
+    lang = resolve_lang(user, message.from_user.language_code)
+
+    # Опционально: спросить язык на самом первом заходе
+    if ASK_LANG_ON_START and not (user or {}).get("ui_lang"):
+        await message.answer(t(lang, "lang_pick"), reply_markup=lang_kb())
+        return
+
     if geo is None:
-        user = await db.get_user(message.from_user.id)
         geo = resolve_geo(user, message.from_user.language_code)
         if geo is None:
-            await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
+            await message.answer(t(lang, "geo_pick"), reply_markup=geo_kb())
             return
         await db.set_geo(message.from_user.id, geo.code)
 
     # Вертикаль берём из свежей ссылки, иначе из сохранённой в базе
-    user = await db.get_user(message.from_user.id)
     vertical = vertical_from_link or (user.get("vertical") if user else None)
-    await show_gate_or_hub(bot, message.chat.id, message.from_user.id, geo, vertical)
+    await show_gate_or_hub(
+        bot, message.chat.id, message.from_user.id, geo, lang, vertical
+    )
 
 
 @router.callback_query(F.data.startswith("geo:"))
@@ -175,12 +225,16 @@ async def pick_geo(call: CallbackQuery, bot: Bot):
         await call.answer("Unknown region", show_alert=True)
         return
     await db.set_geo(call.from_user.id, code)
+    user = await db.get_user(call.from_user.id)
+    lang = resolve_lang(user, call.from_user.language_code)
     await call.answer()
     try:
         await call.message.delete()
     except Exception:  # noqa: BLE001
         pass
-    await show_gate_or_hub(bot, call.message.chat.id, call.from_user.id, geo)
+    await show_gate_or_hub(
+        bot, call.message.chat.id, call.from_user.id, geo, lang
+    )
 
 
 @router.callback_query(F.data.startswith("check:"))
@@ -190,6 +244,9 @@ async def check_sub(call: CallbackQuery, bot: Bot):
     if not geo:
         await call.answer("Unknown region", show_alert=True)
         return
+
+    user = await db.get_user(call.from_user.id)
+    lang = resolve_lang(user, call.from_user.language_code)
 
     missing, errors, results = await evaluate(bot, geo, call.from_user.id)
     await db.save_subs(call.from_user.id, geo.code, results)
@@ -209,65 +266,71 @@ async def check_sub(call: CallbackQuery, bot: Bot):
                 pass
 
     if missing:
-        await call.answer(t(code, "not_subscribed"), show_alert=True)
+        await call.answer(t(lang, "not_subscribed"), show_alert=True)
         try:
-            await call.message.edit_reply_markup(reply_markup=gate_kb(missing, code))
+            await call.message.edit_reply_markup(
+                reply_markup=gate_kb(missing, code, lang)
+            )
         except Exception:  # noqa: BLE001
             pass
         return
 
     await db.mark_passed(call.from_user.id)
-    await call.answer(t(code, "access_granted"))
+    await call.answer(t(lang, "access_granted"))
     try:
         await call.message.delete()
     except Exception:  # noqa: BLE001
         pass
-    await bot.send_message(
-        call.message.chat.id, t(code, "welcome"), reply_markup=hub_kb(code)
-    )
+    await send_hub(bot, call.message.chat.id, geo, lang, "welcome")
 
 
-async def gate_ok(call: CallbackQuery) -> bool:
+async def gate_ok(call: CallbackQuery) -> str | None:
     """
     Защита колбэков хаба. Старые клавиатуры живут в чате вечно:
     без этой проверки юзер, у которого доступ отозван, продолжал бы
     жать «Назад» / «Получить бонус» на сообщениях недельной давности.
+
+    Возвращает язык интерфейса, если доступ есть, иначе None.
     """
     user = await db.get_user(call.from_user.id)
+    lang = resolve_lang(user, call.from_user.language_code)
     if user and user.get("gate_passed"):
-        return True
-    geo_code = (user.get("geo") if user else None) or "en"
-    await call.answer(t(geo_code, "not_subscribed"), show_alert=True)
-    return False
+        return lang
+    await call.answer(t(lang, "not_subscribed"), show_alert=True)
+    return None
 
 
 @router.callback_query(F.data.startswith("hub:"))
 async def back_to_hub(call: CallbackQuery):
-    if not await gate_ok(call):
+    lang = await gate_ok(call)
+    if not lang:
         return
     code = call.data.split(":", 1)[1]
-    await call.message.edit_text(t(code, "hub"), reply_markup=hub_kb(code))
+    await call.message.edit_text(t(lang, "hub"), reply_markup=hub_kb(code, lang))
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("list:"))
 async def show_list(call: CallbackQuery):
-    if not await gate_ok(call):
+    lang = await gate_ok(call)
+    if not lang:
         return
     _, code, vertical = call.data.split(":")
     if not bonuses.get(code, vertical):
-        await call.answer(t(code, "empty"), show_alert=True)
+        await call.answer(t(lang, "empty"), show_alert=True)
         return
-    label = t(code, "cat_casino" if vertical == "casino" else "cat_betting")
+    label = t(lang, "cat_casino" if vertical == "casino" else "cat_betting")
     await call.message.edit_text(
-        f"{label}\n\n{t(code, 'pick_bonus')}", reply_markup=list_kb(code, vertical)
+        f"{label}\n\n{t(lang, 'pick_bonus')}",
+        reply_markup=list_kb(code, vertical, lang),
     )
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("bonus:"))
 async def show_bonus(call: CallbackQuery):
-    if not await gate_ok(call):
+    lang = await gate_ok(call)
+    if not lang:
         return
     bonus_id = call.data.split(":", 1)[1]
     b = bonuses.find(bonus_id)
@@ -275,15 +338,15 @@ async def show_bonus(call: CallbackQuery):
     geo_code = (user.get("geo") if user else None) or DEFAULT_GEO
 
     if not b:
-        await call.answer(t(geo_code, "expired"), show_alert=True)
+        await call.answer(t(lang, "expired"), show_alert=True)
         return
 
     await db.log_click(call.from_user.id, b.id, geo_code, b.vertical)
 
     text = f"<b>{b.brand}</b>\n{b.title}\n\n{b.description}"
     if b.expires:
-        text += f"\n\n{t(b.geo, 'expires')} {b.expires}"
-    await call.message.edit_text(text, reply_markup=bonus_kb(b, b.geo))
+        text += f"\n\n{t(lang, 'expires')} {b.expires}"
+    await call.message.edit_text(text, reply_markup=bonus_kb(b, b.geo, lang))
     await call.answer()
 
 
@@ -291,22 +354,76 @@ async def show_bonus(call: CallbackQuery):
 @router.message(Command("bonuses"))
 async def cmd_bonus(message: Message, bot: Bot):
     user = await db.get_user(message.from_user.id)
+    lang = resolve_lang(user, message.from_user.language_code)
     geo = resolve_geo(user, message.from_user.language_code)
     if not geo:
-        await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
+        await message.answer(t(lang, "geo_pick"), reply_markup=geo_kb())
         return
     if not await ensure_access(bot, user, message.from_user.id, geo):
         vertical = (user or {}).get("vertical")
-        await show_gate_or_hub(bot, message.chat.id, message.from_user.id, geo, vertical)
+        await show_gate_or_hub(
+            bot, message.chat.id, message.from_user.id, geo, lang, vertical
+        )
         return
-    await send_hub(bot, message.chat.id, geo)
+    await send_hub(bot, message.chat.id, geo, lang)
 
 
 @router.message(Command("language"))
 @router.message(Command("lang"))
 async def cmd_language(message: Message):
-    """Позволяет юзеру сменить/сбросить ГЕО-язык вручную в любой момент."""
-    await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
+    """Смена языка интерфейса. ГЕО (офферы и каналы) не меняется."""
+    user = await db.get_user(message.from_user.id)
+    lang = resolve_lang(user, message.from_user.language_code)
+    await message.answer(t(lang, "lang_pick"), reply_markup=lang_kb())
+
+
+@router.message(Command("country"))
+@router.message(Command("geo"))
+async def cmd_country(message: Message):
+    """Смена ГЕО — набора офферов и каналов гейта. Язык не меняется."""
+    user = await db.get_user(message.from_user.id)
+    lang = resolve_lang(user, message.from_user.language_code)
+    await message.answer(t(lang, "geo_pick"), reply_markup=geo_kb())
+
+
+@router.callback_query(F.data == "lang:pick")
+async def open_lang_picker(call: CallbackQuery):
+    """Кнопка 🌐 на гейте и в хабе — открывает выбор языка."""
+    user = await db.get_user(call.from_user.id)
+    lang = resolve_lang(user, call.from_user.language_code)
+    await call.answer()
+    await call.message.answer(t(lang, "lang_pick"), reply_markup=lang_kb())
+
+
+@router.callback_query(F.data.startswith("lang:"))
+async def pick_lang(call: CallbackQuery, bot: Bot):
+    code = call.data.split(":", 1)[1]
+    if code not in LOCALE_CODES:
+        await call.answer("Unknown language", show_alert=True)
+        return
+
+    await db.set_ui_lang(call.from_user.id, code)
+    await call.answer(t(code, "lang_set"))
+    try:
+        await call.message.delete()
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Перерисовываем текущий экран на новом языке
+    user = await db.get_user(call.from_user.id)
+    geo = resolve_geo(user, call.from_user.language_code)
+    if not geo:
+        await bot.send_message(
+            call.message.chat.id, t(code, "geo_pick"), reply_markup=geo_kb()
+        )
+        return
+    if await ensure_access(bot, user, call.from_user.id, geo):
+        await send_hub(bot, call.message.chat.id, geo, code)
+    else:
+        await show_gate_or_hub(
+            bot, call.message.chat.id, call.from_user.id, geo, code,
+            (user or {}).get("vertical"),
+        )
 
 
 @router.message()
@@ -319,17 +436,18 @@ async def fallback(message: Message, bot: Bot):
     await db.touch(message.from_user.id)
     await relay.to_admins(bot, message)
 
+    lang = resolve_lang(user, message.from_user.language_code)
     if not user:
-        await message.answer(t(None, "start_hint"))
+        await message.answer(t(lang, "start_hint"))
         return
     geo = resolve_geo(user, message.from_user.language_code)
     if not geo:
-        await message.answer(t(None, "geo_pick"), reply_markup=geo_kb())
+        await message.answer(t(lang, "geo_pick"), reply_markup=geo_kb())
         return
     if not await ensure_access(bot, user, message.from_user.id, geo):
         await show_gate_or_hub(
-            bot, message.chat.id, message.from_user.id, geo,
+            bot, message.chat.id, message.from_user.id, geo, lang,
             user.get("vertical"),
         )
         return
-    await send_hub(bot, message.chat.id, geo)
+    await send_hub(bot, message.chat.id, geo, lang)

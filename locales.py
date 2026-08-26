@@ -48,6 +48,9 @@ LOCALES: dict[str, dict[str, str]] = {
         "empty": "Šeit pagaidām nav nekā — drīz pievienosim",
         "expired": "Šis bonuss vairs nav aktuāls",
         "geo_pick": "🌍 Izvēlies savu valsti:",
+        "btn_lang": "🌐 Valoda",
+        "lang_pick": "🗣 Izvēlies valodu:",
+        "lang_set": "Valoda nomainīta ✅",
         "start_hint": "Nospied /start",
     },
     # -------------------------------------------------------------- LITHUANIA
@@ -92,6 +95,9 @@ LOCALES: dict[str, dict[str, str]] = {
         "empty": "Kol kas čia tuščia — netrukus pridėsime",
         "expired": "Šis bonusas nebeaktualus",
         "geo_pick": "🌍 Pasirink savo šalį:",
+        "btn_lang": "🌐 Kalba",
+        "lang_pick": "🗣 Pasirink kalbą:",
+        "lang_set": "Kalba pakeista ✅",
         "start_hint": "Paspausk /start",
     },
     # ---------------------------------------------------------------- FALLBACK
@@ -136,11 +142,34 @@ LOCALES: dict[str, dict[str, str]] = {
         "empty": "Nothing here yet — coming soon",
         "expired": "This bonus is no longer available",
         "geo_pick": "🌍 Choose your country:",
+        "btn_lang": "🌐 Language",
+        "lang_pick": "🗣 Choose your language:",
+        "lang_set": "Language changed ✅",
         "start_hint": "Tap /start",
     },
 }
 
 FALLBACK = "en"
+
+# Язык интерфейса ≠ ГЕО. ГЕО решает, какие офферы и какие каналы гейта
+# получит юзер; язык — только на каком языке он читает бота. Латвиец,
+# которому удобнее по-английски, остаётся на латвийских офферах.
+LANG_NAMES: dict[str, str] = {
+    "lv": "🇱🇻 Latviešu",
+    "lt": "🇱🇹 Lietuvių",
+    "en": "🇬🇧 English",
+}
+
+
+def normalize_lang(code: str | None) -> str | None:
+    """
+    Приводит language_code Telegram к коду локали.
+
+    Telegram шлёт "en", "en-US", "pt-BR", "lt" — берём базовую часть
+    и проверяем, есть ли для неё перевод.
+    """
+    base = (code or "").split("-")[0].lower()
+    return base if base in LOCALES else None
 
 
 def t(geo: str | None, key: str, **kwargs) -> str:

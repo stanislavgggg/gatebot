@@ -8,7 +8,7 @@ from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarku
 
 import bonuses
 from config import GEOS, IMAGES_DIR, Geo, ready_geos
-from locales import t
+from locales import LANG_NAMES, t
 
 log = logging.getLogger(__name__)
 
@@ -124,15 +124,27 @@ def find_image(
 # --------------------------------------------------------------------------
 # Клавиатуры
 # --------------------------------------------------------------------------
-def gate_kb(missing: list, geo_code: str) -> InlineKeyboardMarkup:
+def _lang_row(lang: str) -> list:
+    """
+    Кнопка смены языка. Ставится последней строкой, чтобы не перебивать
+    основной CTA, но быть на виду — иначе сменить язык можно только
+    угадав команду /language, чего никто не делает.
+    """
+    return [
+        InlineKeyboardButton(text=t(lang, "btn_lang"), callback_data="lang:pick")
+    ]
+
+
+def gate_kb(missing: list, geo_code: str, lang: str) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=f"📢 {ch.title}", url=ch.url)] for ch in missing]
     rows.append(
         [
             InlineKeyboardButton(
-                text=t(geo_code, "btn_check"), callback_data=f"check:{geo_code}"
+                text=t(lang, "btn_check"), callback_data=f"check:{geo_code}"
             )
         ]
     )
+    rows.append(_lang_row(lang))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -149,14 +161,24 @@ def geo_kb() -> InlineKeyboardMarkup:
     )
 
 
-def hub_kb(geo_code: str) -> InlineKeyboardMarkup:
+def lang_kb() -> InlineKeyboardMarkup:
+    """Выбор языка интерфейса. К ГЕО отношения не имеет."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=name, callback_data=f"lang:{code}")]
+            for code, name in LANG_NAMES.items()
+        ]
+    )
+
+
+def hub_kb(geo_code: str, lang: str) -> InlineKeyboardMarkup:
     c = bonuses.counts(geo_code)
     rows = []
     if c["casino"]:
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"{t(geo_code, 'cat_casino')} ({c['casino']})",
+                    text=f"{t(lang, 'cat_casino')} ({c['casino']})",
                     callback_data=f"list:{geo_code}:casino",
                 )
             ]
@@ -165,15 +187,16 @@ def hub_kb(geo_code: str) -> InlineKeyboardMarkup:
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"{t(geo_code, 'cat_betting')} ({c['betting']})",
+                    text=f"{t(lang, 'cat_betting')} ({c['betting']})",
                     callback_data=f"list:{geo_code}:betting",
                 )
             ]
         )
+    rows.append(_lang_row(lang))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def list_kb(geo_code: str, vertical: str) -> InlineKeyboardMarkup:
+def list_kb(geo_code: str, vertical: str, lang: str) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text=f"{b.brand} — {b.title}", callback_data=f"bonus:{b.id}")]
         for b in bonuses.get(geo_code, vertical)
@@ -181,20 +204,20 @@ def list_kb(geo_code: str, vertical: str) -> InlineKeyboardMarkup:
     rows.append(
         [
             InlineKeyboardButton(
-                text=t(geo_code, "btn_back"), callback_data=f"hub:{geo_code}"
+                text=t(lang, "btn_back"), callback_data=f"hub:{geo_code}"
             )
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def bonus_kb(bonus, geo_code: str) -> InlineKeyboardMarkup:
+def bonus_kb(bonus, geo_code: str, lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=t(geo_code, "btn_claim"), url=bonus.url)],
+            [InlineKeyboardButton(text=t(lang, "btn_claim"), url=bonus.url)],
             [
                 InlineKeyboardButton(
-                    text=t(geo_code, "btn_back"),
+                    text=t(lang, "btn_back"),
                     callback_data=f"list:{geo_code}:{bonus.vertical}",
                 )
             ],

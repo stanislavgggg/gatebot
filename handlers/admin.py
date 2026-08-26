@@ -142,8 +142,11 @@ async def cmd_check(message: Message, bot: Bot):
 
     for g in GEOS.values():
         lines.append(f"<b>{g.flag} {g.title}</b>")
-        if not g.is_ready:
-            lines.append("  ⚠️ No channels configured — this GEO is disabled")
+        if not g.is_gated:
+            if g.is_ready:
+                lines.append("  🔓 No gate — open access (GATE_FREE_GEOS)")
+            else:
+                lines.append("  ⚠️ No channels configured — this GEO is disabled")
             lines.append("")
             continue
         for ch in g.channels:
