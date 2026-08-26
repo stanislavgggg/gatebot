@@ -101,7 +101,15 @@ async def cmd_stats(message: Message):
     if s["by_source"]:
         lines += ["", "<b>By source:</b>"]
         for r in s["by_source"]:
-            lines.append(f"<code>{r['source']}</code>: {r['total']} / {r['passed'] or 0}")
+            # ГЕО обязательно рядом с меткой: parse_payload срезает код
+            # страны, поэтому lv_prop_push и lt_prop_push дают одинаковый
+            # source и без флага сливаются в одну строку
+            g = GEOS.get(r["geo"])
+            flag = g.flag if g else "❔"
+            lines.append(
+                f"{flag} <code>{r['source']}</code>: "
+                f"{r['total']} / {r['passed'] or 0}"
+            )
 
     if s["top_bonuses"]:
         lines += ["", "<b>Top bonuses by clicks:</b>"]

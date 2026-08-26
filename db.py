@@ -440,10 +440,11 @@ async def stats() -> dict:
         out["by_geo"] = [dict(r) for r in await cur.fetchall()]
 
         cur = await db.execute(
-            """SELECT COALESCE(source, '—') AS source,
+            """SELECT COALESCE(geo, '?') AS geo,
+                      COALESCE(source, '—') AS source,
                       COUNT(*) AS total,
                       SUM(gate_passed = 1) AS passed
-               FROM users GROUP BY source ORDER BY total DESC LIMIT 15"""
+               FROM users GROUP BY geo, source ORDER BY total DESC LIMIT 20"""
         )
         out["by_source"] = [dict(r) for r in await cur.fetchall()]
 
