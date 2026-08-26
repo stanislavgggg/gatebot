@@ -284,40 +284,58 @@ async def check_sub(call: CallbackQuery, bot: Bot):
     await send_hub(bot, call.message.chat.id, geo, lang, "welcome")
 
 
-async def gate_ok(call: CallbackQuery) -> str | None:
+async def gate_ok(call: CallbackQuery):
     """
     Защита колбэков хаба. Старые клавиатуры живут в чате вечно:
     без этой проверки юзер, у которого доступ отозван, продолжал бы
     жать «Назад» / «Получить бонус» на сообщениях недельной давности.
 
-    Возвращает язык интерфейса, если доступ есть, иначе None.
+    Возвращает (lang, geo) из БАЗЫ, а не из callback_data. ГЕО в кнопке
+    отражает момент, когда сообщение было создано, и после смены страны
+    устаревает — из-за этого юзер получал офферы и трекеры чужого ГЕО.
+
+    Если доступа нет — (None, None).
     """
     user = await db.get_user(call.from_user.id)
     lang = resolve_lang(user, call.from_user.language_code)
-    if user and user.get("gate_passed"):
-        return lang
-    await call.answer(t(lang, "not_subscribed"), show_alert=True)
-    return None
+    if not (user and user.get("gate_passed")):
+        await call.answer(t(lang, "not_subscribed"), show_alert=True)
+        return None, None
+
+    geo = resolve_geo(user, call.from_user.language_code)
+    if not geo:
+        await call.answer(t(lang, "geo_pick"), show_alert=True)
+        return None, None
+    return lang, geo
 
 
 @router.callback_query(F.data.startswith("hub:"))
 async def back_to_hub(call: CallbackQuery):
-    lang = await gate_ok(call)
+    lang, geo = await gate_ok(call)
     if not lang:
         return
-    code = call.data.split(":", 1)[1]
-    await call.message.edit_text(t(lang, "hub"), reply_markup=hub_kb(code, lang))
+    await call.message.edit_text(
+        t(lang, "hub"), reply_markup=hub_kb(geo.code, lang)
+    )
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("list:"))
 async def show_list(call: CallbackQuery):
-    lang = await gate_ok(call)
+    lang, geo = await gate_ok(call)
     if not lang:
         return
-    _, code, vertical = call.data.split(":")
+    _, _stale_geo, vertical = call.data.split(":")
+    code = geo.code  # ГЕО из базы, а не из устаревшей кнопки
     if not bonuses.get(code, vertical):
         await call.answer(t(lang, "empty"), show_alert=True)
+        # Вертикали в этом ГЕО нет — возвращаем в актуальный хаб
+        try:
+            await call.message.edit_text(
+                t(lang, "hub"), reply_markup=hub_kb(code, lang)
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return
     label = t(lang, "cat_casino" if vertical == "casino" else "cat_betting")
     await call.message.edit_text(
@@ -329,16 +347,23 @@ async def show_list(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("bonus:"))
 async def show_bonus(call: CallbackQuery):
-    lang = await gate_ok(call)
+    lang, geo = await gate_ok(call)
     if not lang:
         return
     bonus_id = call.data.split(":", 1)[1]
-    b = bonuses.find(bonus_id)
-    user = await db.get_user(call.from_user.id)
-    geo_code = (user.get("geo") if user else None) or DEFAULT_GEO
+    geo_code = geo.code
 
+    # Ищем ТОЛЬКО в своём ГЕО: иначе по id из старой клавиатуры уйдёт
+    # оффер и партнёрская ссылка чужого рынка
+    b = bonuses.find(bonus_id, geo_code)
     if not b:
         await call.answer(t(lang, "expired"), show_alert=True)
+        try:
+            await call.message.edit_text(
+                t(lang, "hub"), reply_markup=hub_kb(geo_code, lang)
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return
 
     await db.log_click(call.from_user.id, b.id, geo_code, b.vertical)
@@ -346,7 +371,7 @@ async def show_bonus(call: CallbackQuery):
     text = f"<b>{b.brand}</b>\n{b.title}\n\n{b.description}"
     if b.expires:
         text += f"\n\n{t(lang, 'expires')} {b.expires}"
-    await call.message.edit_text(text, reply_markup=bonus_kb(b, b.geo, lang))
+    await call.message.edit_text(text, reply_markup=bonus_kb(b, geo_code, lang))
     await call.answer()
 
 

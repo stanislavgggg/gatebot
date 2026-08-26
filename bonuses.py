@@ -90,8 +90,16 @@ def get(geo: str, vertical: str | None = None) -> list[Bonus]:
     return items
 
 
-def find(bonus_id: str) -> Bonus | None:
-    for items in _CACHE.values():
+def find(bonus_id: str, geo: str | None = None) -> Bonus | None:
+    """
+    Ищет бонус по id. Если задано geo — только внутри него.
+
+    Ограничение по ГЕО критично: id прилетает из callback_data старой
+    клавиатуры, которая могла быть создана под другое ГЕО. Без проверки
+    литовец получил бы латвийский оффер с латвийским трекером.
+    """
+    buckets = [_CACHE.get(geo, [])] if geo else _CACHE.values()
+    for items in buckets:
         for b in items:
             if b.id == bonus_id:
                 return b
