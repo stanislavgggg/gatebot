@@ -31,6 +31,15 @@ CREATE INDEX IF NOT EXISTS idx_users_source ON users(source);
 -- индекс по vertical создаётся в _migrate: на старых базах колонки ещё нет
 
 -- Клики по бонусам: главный сигнал качества трафика
+CREATE TABLE IF NOT EXISTS broadcast_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    sent_at    TEXT,
+    admin_id   INTEGER,
+    filters    TEXT,               -- JSON фильтров на момент отправки
+    user_id    INTEGER             -- кому реально ушло
+);
+CREATE INDEX IF NOT EXISTS idx_bclog_user ON broadcast_log(user_id);
+
 CREATE TABLE IF NOT EXISTS bonus_clicks (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id   INTEGER,
@@ -316,10 +325,16 @@ def _build_filter(f: dict) -> tuple[str, list]:
     elif f.get("gate") == "not_passed":
         q += " AND gate_passed = 0"
 
-    geos = f.get("geos") or []
-    if geos:
-        q += f" AND geo IN ({','.join('?' * len(geos))})"
-        params += list(geos)
+    # ВАЖНО: пустой список ГЕО раньше означал «фильтра нет» и рассылка
+    # уходила всем подряд, включая юзеров с geo = NULL. Теперь пустой
+    # список означает «никто» — это безопасный дефолт для рассылки.
+    if "geos" in f:
+        geos = list(f.get("geos") or [])
+        if geos:
+            q += f" AND geo IN ({','.join('?' * len(geos))})"
+            params += list(geos)
+        else:
+            q += " AND 0"
 
     verts = list(f.get("verticals") or [])
     if verts:
@@ -394,6 +409,50 @@ async def get_audience(
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT user_id FROM users" + where, params)
         return [r[0] for r in await cur.fetchall()]
+
+
+async def log_broadcast(admin_id: int, filters: dict, user_ids: list[int]) -> None:
+    """
+    Фиксирует, кому и с какими фильтрами ушла рассылка.
+
+    ГЕО юзера может измениться после отправки (сменил страну, зашёл по
+    другой ссылке), поэтому по текущему состоянию базы разобраться
+    «почему он это получил» невозможно. Лог снимает вопрос.
+    """
+    import json as _json
+    ts = now()
+    payload = _json.dumps(filters, ensure_ascii=False, sort_keys=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.executemany(
+            """INSERT INTO broadcast_log (sent_at, admin_id, filters, user_id)
+               VALUES (?,?,?,?)""",
+            [(ts, admin_id, payload, uid) for uid in user_ids],
+        )
+        await db.commit()
+
+
+async def broadcasts_for_user(user_id: int, limit: int = 10) -> list[dict]:
+    """Какие рассылки получал конкретный юзер — для /find и разбора жалоб."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """SELECT sent_at, filters FROM broadcast_log
+               WHERE user_id = ? ORDER BY id DESC LIMIT ?""",
+            (user_id, limit),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def audience_by_geo(filters: dict) -> list[tuple[str, int]]:
+    """Разбивка выборки по ГЕО — чтобы админ видел состав ДО отправки."""
+    where, params = _build_filter(filters)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT COALESCE(geo,'?') AS g, COUNT(*) FROM users"
+            + where + " GROUP BY g ORDER BY COUNT(*) DESC",
+            params,
+        )
+        return [(r[0], r[1]) for r in await cur.fetchall()]
 
 
 async def count_audience(filters: dict) -> int:

@@ -296,6 +296,37 @@ async def cmd_find(message: Message, command: CommandObject):
     await message.answer("\n".join(lines))
 
 
+@router.message(Command("sent"))
+async def cmd_sent(message: Message, command: CommandObject):
+    """Какие рассылки получал юзер и с какими фильтрами."""
+    if not is_admin(message.from_user.id):
+        return
+    if not command.args:
+        await message.answer("Usage: <code>/sent 918966597</code>")
+        return
+    try:
+        uid = int(command.args.strip())
+    except ValueError:
+        await message.answer("User ID must be a number.")
+        return
+
+    rows = await db.broadcasts_for_user(uid)
+    if not rows:
+        await message.answer("This user has not received any broadcast.")
+        return
+
+    import json as _json
+    lines = [f"📨 <b>Broadcasts received by {uid}</b>", ""]
+    for r in rows:
+        try:
+            f = _json.loads(r["filters"])
+            geos = ", ".join(g.upper() for g in (f.get("geos") or [])) or "—"
+        except Exception:  # noqa: BLE001
+            geos = "?"
+        lines.append(f"{r['sent_at'][:16].replace('T', ' ')} · GEO: {geos}")
+    await message.answer("\n".join(lines))
+
+
 @router.message(Command("dialog"))
 async def cmd_dialog(message: Message, command: CommandObject):
     """История переписки с юзером."""
@@ -410,11 +441,36 @@ async def bc_filters(call: CallbackQuery, state: FSMContext):
         if not size:
             await call.answer("No one matches these filters", show_alert=True)
             return
+        if not size:
+            await call.answer(
+                "Nobody matches these filters — select at least one GEO.",
+                show_alert=True,
+            )
+            return
+
+        # Разбивка по ГЕО прямо в превью: рассылка идёт точной копией
+        # сообщения, поэтому смешать две страны = отправить половине
+        # аудитории текст на чужом языке
+        by_geo = await db.audience_by_geo(filters)
+        parts = []
+        for code, n in by_geo:
+            g = GEOS.get(code)
+            parts.append(f"{g.flag if g else '❔'} {code.upper()} {n}")
+        breakdown = " · ".join(parts)
+
+        warn = ""
+        if len(by_geo) > 1:
+            warn = (
+                "\n\n⚠️ <b>More than one GEO selected.</b> The message is sent "
+                "as an exact copy — it is not translated. Send one GEO at a time."
+            )
+
         await state.update_data(size=size)
         await state.set_state(Broadcast.waiting_message)
         await call.message.edit_text(
             f"{audience.describe(filters)}\n\n"
-            f"📨 Recipients: <b>{size}</b>\n\n"
+            f"📨 Recipients: <b>{size}</b>\n"
+            f"{breakdown}{warn}\n\n"
             "Send the message — text, photo or video. "
             "It will go out exactly as you send it."
         )
@@ -548,6 +604,9 @@ async def run_broadcast(
     users = [u for u in await db.get_audience(filters=filters) if u not in exclude]
     label = audience.describe(filters or {}).replace("\n", " ") if filters else "all"
     bid = await db.log_broadcast_start(admin_id, label[:200])
+    # Пофамильный лог: ГЕО юзера может поменяться после отправки, и тогда
+    # по текущей базе уже не докажешь, в какую выборку он попадал
+    await db.log_broadcast(admin_id, filters or {}, users)
     sent = failed = blocked = 0
 
     for uid in users:
