@@ -80,7 +80,7 @@ async def cmd_stats(message: Message):
         "<b>📊 Stats</b>",
         f"Started the bot: <b>{total}</b>",
         f"Passed the gate: <b>{passed}</b> ({conv})",
-        f"Blocked the bot: <b>{t['blocked'] or 0}</b>",
+        f"Blocked the bot (all time): <b>{t['blocked'] or 0}</b>",
         f"Last 24h: <b>{s['last_24h']}</b>",
         "",
         "<b>By GEO:</b>",
@@ -296,6 +296,39 @@ async def cmd_find(message: Message, command: CommandObject):
     await message.answer("\n".join(lines))
 
 
+@router.message(Command("broadcasts"))
+async def cmd_broadcasts(message: Message):
+    """История рассылок с результатом каждой — чтобы сверять цифры."""
+    if not is_admin(message.from_user.id):
+        return
+    rows = await db.broadcast_history(10)
+    if not rows:
+        await message.answer("No broadcasts yet.")
+        return
+
+    lines = ["📜 <b>Broadcast history</b>", ""]
+    for r in rows:
+        when = (r["started_at"] or "")[:16].replace("T", " ")
+        total = (r["sent"] or 0) + (r["blocked"] or 0) + (r["failed"] or 0)
+        rate = f"{(r['blocked'] or 0) / total * 100:.0f}%" if total else "—"
+        # Достаём ГЕО из сохранённого описания аудитории
+        aud = (r["audience"] or "").replace("<b>", "").replace("</b>", "")
+        geo = "?"
+        if "GEO:" in aud:
+            geo = aud.split("GEO:", 1)[1].split("Ad label")[0].strip()[:40]
+        lines.append(
+            f"<b>#{r['id']}</b> {when} · {geo}\n"
+            f"   sent {r['sent'] or 0} · blocked {r['blocked'] or 0} ({rate})"
+            f" · errors {r['failed'] or 0}"
+        )
+    lines.append("")
+    lines.append(
+        "<i>blocked = users found blocking the bot during THAT send. "
+        "The number in /stats is the all-time total.</i>"
+    )
+    await message.answer("\n".join(lines))
+
+
 @router.message(Command("sent"))
 async def cmd_sent(message: Message, command: CommandObject):
     """Какие рассылки получал юзер и с какими фильтрами."""
@@ -495,7 +528,7 @@ async def bc_preview(message: Message, state: FSMContext):
     await message.answer(
         f"👆 This is how subscribers will see it.\n"
         f"Audience: <b>{data['size']}</b>\n\n"
-        f"🧪 <b>Test to myself</b> — a copy goes to admins only\n"
+        f"🧪 <b>Test to myself</b> — a copy goes to you only\n"
         f"🎯 <b>Test on {SAMPLE_SIZE}</b> — goes to {SAMPLE_SIZE} real users, "
         f"they are excluded from the full send\n"
         f"✏️ <b>Rewrite</b> — send a new version",
@@ -505,20 +538,24 @@ async def bc_preview(message: Message, state: FSMContext):
 
 @router.callback_query(Broadcast.confirming, F.data == "bctest")
 async def bc_test(call: CallbackQuery, state: FSMContext, bot: Bot):
+    """
+    Тест только тому, кто нажал кнопку.
+
+    Раньше копия уходила всем из ADMIN_IDS. Админ при этом получал
+    сообщения любых ГЕО, минуя фильтр аудитории и гейт, — и выглядело
+    это как сломанный фильтр по стране.
+    """
     data = await state.get_data()
-    ok = 0
-    for aid in ADMIN_IDS:
-        try:
-            await bot.copy_message(
-                chat_id=aid,
-                from_chat_id=data["from_chat_id"],
-                message_id=data["message_id"],
-            )
-            ok += 1
-        except Exception as e:  # noqa: BLE001
-            log.warning("Test message not delivered to admin %s: %s", aid, e)
-        await asyncio.sleep(BROADCAST_SLEEP)
-    await call.answer(f"🧪 Sent ({ok})")
+    try:
+        await bot.copy_message(
+            chat_id=call.from_user.id,
+            from_chat_id=data["from_chat_id"],
+            message_id=data["message_id"],
+        )
+        await call.answer("🧪 Sent to you only")
+    except Exception as e:  # noqa: BLE001
+        log.warning("Test message not delivered to %s: %s", call.from_user.id, e)
+        await call.answer("Could not deliver the test message.", show_alert=True)
 
 
 @router.callback_query(Broadcast.confirming, F.data == "bcsample")
@@ -641,7 +678,8 @@ async def run_broadcast(
     await bot.send_message(
         report_to,
         f"✅ <b>Broadcast finished</b>\n"
+        f"Recipients: <b>{len(users)}</b>\n"
         f"Delivered: <b>{sent}</b>\n"
-        f"Blocked the bot: <b>{blocked}</b>\n"
+        f"Newly blocked in this send: <b>{blocked}</b>\n"
         f"Errors: <b>{failed}</b>",
     )

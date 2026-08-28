@@ -411,6 +411,18 @@ async def get_audience(
         return [r[0] for r in await cur.fetchall()]
 
 
+async def broadcast_history(limit: int = 10) -> list[dict]:
+    """История рассылок: аудитория и результат каждой отправки."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """SELECT id, audience, sent, failed, blocked, started_at
+               FROM broadcasts ORDER BY id DESC LIMIT ?""",
+            (limit,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
 async def log_broadcast(admin_id: int, filters: dict, user_ids: list[int]) -> None:
     """
     Фиксирует, кому и с какими фильтрами ушла рассылка.
